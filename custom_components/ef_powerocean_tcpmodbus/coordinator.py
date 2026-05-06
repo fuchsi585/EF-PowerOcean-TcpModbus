@@ -23,6 +23,9 @@ _REG_AC_PV         = 40580   # Grid voltages/currents, frequency, apparent power
                               # PV global voltage, inverter temp, PV string currents
 _REG_ENERGY        = 42161   # kWh counters
 
+SLEEP_TIME_AFTER_HEARTBEAT = 0.2
+SLEEP_TIME_AFTER_READ_BLOCK = 0.1
+
 
 class EcoflowCoordinator(DataUpdateCoordinator):
     """Fetches data from EcoFlow PowerOcean Plus via Modbus TCP."""
@@ -51,14 +54,15 @@ class EcoflowCoordinator(DataUpdateCoordinator):
         await self._client.connect()
 
         if not self._client.connected:
-            _LOGGER.error("Modbus TCP connected to %s:%s", self.host, self.port)
+            _LOGGER.error("Modbus TCP not connected to %s:%s", self.host, self.port)
 
     async def async_reconnect(self) -> None:
-        await self._client.close()
-        await self._client.connect()
+        async with self._lock:
+            await self._client.close()
+            await self._client.connect()
             
         if not self._client.connected:
-            _LOGGER.error("Modbus TCP connected to %s:%s", self.host, self.port)
+            _LOGGER.error("Modbus TCP can not reconnect to %s:%s", self.host, self.port)
 
     async def _read_block(self, addr: int, count: int) -> list[int] | None:
         """Read *count* holding registers starting at *addr*.  Returns None on error."""
@@ -94,18 +98,29 @@ class EcoflowCoordinator(DataUpdateCoordinator):
     async def _fetch_all(self) -> dict:
         data: dict = {}
 
+        if not self._client.connected:
+            _LOGGER.debug("PowerOcean is not connected. Reconnect!")
+            await self.async_reconnect()
+            if not self._client.connected:
+                _LOGGER.warning("PowerOcean reconnect failed: %s – will retry next poll", exc)
+                return None
+
         # ── Heartbeat: verify device is reachable before reading all blocks ──
         try:
             async with self._lock:
                 hb = await self._client.read_holding_registers(REG_STATUS, count=1)
+            
             if hb is None or hb.isError():
-                _LOGGER.error("Heartbeat register read failed")
+                _LOGGER.warning("Heartbeat register read failed – will retry next poll")
+                return None
+
             _LOGGER.debug("Heartbeat OK (reg %s = %s)", REG_STATUS, hb.registers[0])
         except Exception as exc:
-            _LOGGER.error("PowerOcean heartbeat failed: %s – will retry next poll", exc)
+            _LOGGER.warning("PowerOcean heartbeat failed: %s – will retry next poll", exc)
             return None
-
+        
         # ── Block A: Serial number + operation mode (40004, 12 regs) ──────────
+        await asyncio.sleep(SLEEP_TIME_AFTER_HEARTBEAT)
         a = await self._read_block(_REG_SERIAL, 12)
         if a:
             # Serial number is ASCII-encoded across registers 0-7 (2 chars each)
@@ -116,6 +131,7 @@ class EcoflowCoordinator(DataUpdateCoordinator):
             data["operation_mode"] = a[9] if len(a) > 9 else None
 
         # ── Block B: Main power values (40519, 34 regs) ──────────────────────
+        await asyncio.sleep(SLEEP_TIME_AFTER_READ_BLOCK)
         b = await self._read_block(_REG_MAIN, 30)   # 40519–40548, last needed index = 29
         if b:
             _LOGGER.debug(
@@ -143,6 +159,7 @@ class EcoflowCoordinator(DataUpdateCoordinator):
             data["limit_charge"]      = round(num_modules * 2500)  # 2.5 kW per module
 
         # ── Block C: Battery detail (40574, 6 regs) ───────────────────────────
+        await asyncio.sleep(SLEEP_TIME_AFTER_READ_BLOCK)
         c = await self._read_block(_REG_BAT_DETAIL, 6)
         if c:
             data["battery_voltage"]     = self._f(c, 0)   # 40574 ✅
@@ -150,6 +167,7 @@ class EcoflowCoordinator(DataUpdateCoordinator):
             data["battery_temperature"] = self._f(c, 4)   # 40578 – ⚠️ not in verified list
 
         # ── Block D: AC grid + PV strings (40580, 28 regs → up to 40607) ──────
+        await asyncio.sleep(SLEEP_TIME_AFTER_READ_BLOCK)
         d = await self._read_block(_REG_AC_PV, 28)
         if d:
             data["voltage_l1"]           = self._f(d, 0)    # 40580 ✅
@@ -195,6 +213,7 @@ class EcoflowCoordinator(DataUpdateCoordinator):
 
         # ── Block E: Energy counters (42161, 100 regs) ────────────────────────
         # Offsets = register_address - 42161
+        await asyncio.sleep(SLEEP_TIME_AFTER_READ_BLOCK)
         e = await self._read_block(_REG_ENERGY, 100)
         if e:
             data["grid_import_total"]    = self._f(e, 0)    # 42161 ✅

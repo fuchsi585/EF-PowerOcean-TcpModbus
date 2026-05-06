@@ -30,7 +30,7 @@ STEP_USER_DATA_SCHEMA = vol.Schema(
         vol.Optional("port", default=DEFAULT_PORT): int,
         vol.Optional(CONF_BATTERY_CAPACITY, default=DEFAULT_BATTERY_CAPACITY): vol.Coerce(float),
         vol.Optional(CONF_PV_STRINGS, default=DEFAULT_PV_STRINGS): vol.All(int, vol.Range(min=1, max=3)),
-        vol.Optional(CONF_SCAN_INTERVAL, default=DEFAULT_SCAN_INTERVAL): vol.All(int, vol.Range(min=5, max=60)),
+        vol.Optional(CONF_SCAN_INTERVAL, default=DEFAULT_SCAN_INTERVAL): vol.All(int, vol.Range(min=2, max=60)),
     }
 )
 
@@ -144,7 +144,7 @@ class EcoflowOptionsFlow(config_entries.OptionsFlow):
                 vol.Optional(
                     CONF_SCAN_INTERVAL,
                     default=_current(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL),
-                ): vol.All(int, vol.Range(min=5, max=60)),
+                ): vol.All(int, vol.Range(min=2, max=60)),
             }
         )
 
