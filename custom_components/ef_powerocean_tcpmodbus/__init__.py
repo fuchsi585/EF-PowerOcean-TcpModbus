@@ -1,10 +1,20 @@
 """EF-PowerOcean-TcpModbus – Local Modbus TCP integration for EcoFlow PowerOcean Plus."""
+
 from __future__ import annotations
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 
-from .const import CONF_BATTERY_CAPACITY, CONF_PV_STRINGS, CONF_SCAN_INTERVAL, DEFAULT_BATTERY_CAPACITY, DEFAULT_PORT, DEFAULT_PV_STRINGS, DEFAULT_SCAN_INTERVAL, DOMAIN
+from .const import (
+    CONF_BATTERY_CAPACITY,
+    CONF_PV_STRINGS,
+    CONF_SCAN_INTERVAL,
+    DEFAULT_BATTERY_CAPACITY,
+    DEFAULT_PORT,
+    DEFAULT_PV_STRINGS,
+    DEFAULT_SCAN_INTERVAL,
+    DOMAIN,
+)
 from .coordinator import EcoflowCoordinator
 
 PLATFORMS = ["sensor"]
@@ -12,6 +22,7 @@ PLATFORMS = ["sensor"]
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up EF-PowerOcean-TcpModbus from a config entry."""
+
     def _get(key, default):
         return entry.options.get(key, entry.data.get(key, default))
 
@@ -39,6 +50,6 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     # close connection and shutdown
     coordinator: EcoflowCoordinator = hass.data[DOMAIN].pop(entry.entry_id)
-    await coordinator.async_shutdown()
-    
+    await coordinator.async_client_shutdown()
+
     return True
