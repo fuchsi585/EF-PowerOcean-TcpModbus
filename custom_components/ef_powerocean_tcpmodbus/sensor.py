@@ -1,5 +1,7 @@
 """Sensor entities for EcoFlow PowerOcean Plus."""
 from __future__ import annotations
+
+import logging
 from dataclasses import dataclass
 
 from homeassistant.components.sensor import (
@@ -17,6 +19,8 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import DOMAIN
 from .coordinator import EcoflowCoordinator
+
+_LOGGER = logging.getLogger(__name__)
 
 
 @dataclass(frozen=False)
@@ -399,11 +403,20 @@ class EcoflowSensor(CoordinatorEntity[EcoflowCoordinator], RestoreSensor):
             self._last_written_value = new_value
             self.async_write_ha_state()
 
+    async def async_added_to_hass(self) -> None:
+        """Restore last known value when sensor is added."""
+        await super().async_added_to_hass()
+        if (last_value := await self.async_get_last_sensor_data()) and last_value.native_value is not None:
+            _LOGGER.debug(f"Restore Sensor '{self.entity_description.name}' with value: {last_value.native_value}")
+            self._restored_value = last_value.native_value
+            self._last_written_value = last_value.native_value
+
     @property
-    def native_value(self):
+    def native_value(self) -> float | int | str | None:
+        """Return the sensor value from coordinator, falling back to last value"""
         if self.coordinator.data is not None:
             value = self.coordinator.data.get(self.entity_description.key, None)
             if value is not None:
                 return value
 
-        return self._restored_value
+        return self._last_written_value

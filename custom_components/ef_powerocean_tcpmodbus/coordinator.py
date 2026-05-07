@@ -11,7 +11,7 @@ from pymodbus.client import AsyncModbusTcpClient
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
-from .const import DOMAIN, PV_CURRENT_THRESHOLD, REG_STATUS
+from .const import DOMAIN, PV_CURRENT_THRESHOLD, REG_STATUS, DEFAULT_SLAVE
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -41,8 +41,14 @@ class EcoflowCoordinator(DataUpdateCoordinator):
         self.port = port
         self._battery_capacity = battery_capacity
         self._pv_strings = pv_strings
-        self._client: AsyncModbusTcpClient = AsyncModbusTcpClient(self.host, port=self.port, timeout=5)
-        self._client.unit_id = 1
+        self._client: AsyncModbusTcpClient = AsyncModbusTcpClient(
+            self.host, 
+            port=self.port, 
+            timeout=5, 
+            reconnect_delay=10,
+            retries=20
+        )
+        self._client.unit_id = DEFAULT_SLAVE
         self._lock = asyncio.Lock()
         
 
@@ -50,28 +56,35 @@ class EcoflowCoordinator(DataUpdateCoordinator):
     # Modbus helpers
     # ------------------------------------------------------------------
 
-    async def async_connect_client(self):
+    async def async_shutdown(self) -> None:
+        """Integration-Shutdown, closing connection"""
+        self._client.close()
+        await super().async_shutdown()
+
+    async def async_connect_client(self) -> None:
+        """First Client-Connect"""
         await self._client.connect()
 
         if not self._client.connected:
             _LOGGER.error("Modbus TCP not connected to %s:%s", self.host, self.port)
 
     async def async_reconnect(self) -> None:
+        """Client-Reconnect"""
         async with self._lock:
-            await self._client.close()
+            self._client.close()
             await self._client.connect()
             
         if not self._client.connected:
-            _LOGGER.error("Modbus TCP can not reconnect to %s:%s", self.host, self.port)
+            _LOGGER.error("Modbus TCP not reconnect to %s:%s", self.host, self.port)
 
     async def _read_block(self, addr: int, count: int) -> list[int] | None:
         """Read *count* holding registers starting at *addr*.  Returns None on error."""
         try:
             async with self._lock:
                 res = await self._client.read_holding_registers(addr, count=count)
-            if res and not res.isError():
-                _LOGGER.debug("Block 0x%04X(%d): %s", addr, count, res.registers)
-                return res.registers
+                if not res.isError():
+                    _LOGGER.debug("Block 0x%04X(%d): %s", addr, count, res.registers)
+                    return res.registers
             # Modbus error response – connection may be stale
             _LOGGER.warning("Modbus error response at 0x%04X, resetting connection", addr)
             await self.async_reconnect()
@@ -110,9 +123,9 @@ class EcoflowCoordinator(DataUpdateCoordinator):
             async with self._lock:
                 hb = await self._client.read_holding_registers(REG_STATUS, count=1)
             
-            if hb is None or hb.isError():
-                _LOGGER.warning("Heartbeat register read failed – will retry next poll")
-                return None
+                if hb.isError():
+                    _LOGGER.warning("Heartbeat register read failed – will retry next poll – Error-Code: %s", hb.exception_code)
+                    return None
 
             _LOGGER.debug("Heartbeat OK (reg %s = %s)", REG_STATUS, hb.registers[0])
         except Exception as exc:

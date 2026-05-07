@@ -16,7 +16,7 @@
           "port": "Standard ist 502",
           "battery_capacity": "Nutzbare Kapazität des Batteriemoduls, z.B. 5.0 für ein 5-kWh-Modul",
           "pv_strings": "Anzahl der am Wechselrichter angeschlossenen PV-Strings (1–3). Nicht konfigurierte Strings werden ignoriert.",
-          "scan_interval": "Wie oft Werte abgefragt werden (5–60 Sekunden)"
+          "scan_interval": "Wie oft Werte abgefragt werden (2–60 Sekunden)"
         }
       }
     },
@@ -44,7 +44,7 @@
           "port": "Standard ist 502",
           "battery_capacity": "Nutzbare Kapazität des Batteriemoduls, z.B. 5.0 für ein 5-kWh-Modul",
           "pv_strings": "Anzahl der am Wechselrichter angeschlossenen PV-Strings (1–3). Nicht konfigurierte Strings werden ignoriert.",
-          "scan_interval": "Wie oft Werte abgefragt werden (5–60 Sekunden)"
+          "scan_interval": "Wie oft Werte abgefragt werden (2–60 Sekunden)"
         }
       }
     },

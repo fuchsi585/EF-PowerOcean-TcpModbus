@@ -20,6 +20,7 @@ from .const import (
     DEFAULT_SCAN_INTERVAL,
     DOMAIN,
     REG_STATUS,
+    DEFAULT_SLAVE
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -39,13 +40,13 @@ async def async_test_connection(host: str, port: int) -> bool:
     """Try to connect and read status register."""
     try:
         client = AsyncModbusTcpClient(host, port=port, timeout=5)
-        client.unit_id = 1
+        client.unit_id = DEFAULT_SLAVE
         await client.connect()
         if not client.connected:
             return False
         
         result = await client.read_holding_registers(REG_STATUS, count=1)
-        await client.close()
+        client.close()
         return not result.isError()
     except Exception as e:
         _LOGGER.warning("EF-PowerOcean connection test failed: %s", e)
