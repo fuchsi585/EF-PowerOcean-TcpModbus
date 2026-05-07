@@ -9,6 +9,7 @@ from datetime import timedelta
 
 from pymodbus.client import AsyncModbusTcpClient
 from pymodbus.exceptions import ModbusException
+from pymodbus.logging import pymodbus_apply_logging_config
 
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
@@ -25,7 +26,6 @@ _REG_AC_PV = 40580  # Grid voltages/currents, frequency, apparent power,
 # PV global voltage, inverter temp, PV string currents
 _REG_ENERGY = 42161  # kWh counters
 
-RECONNECT_DELAY = 30
 SLEEP_TIME_AFTER_HEARTBEAT = 0.2
 SLEEP_TIME_AFTER_READ_BLOCK = 0.1
 
@@ -58,6 +58,9 @@ class EcoflowCoordinator(DataUpdateCoordinator):
         self._client.unit_id = DEFAULT_SLAVE
         self._lock = asyncio.Lock()
 
+        # Logging von pymodbus auf CRITICAL. Hat aber auch Einfluss auf modbus.py von HA
+        # pymodbus_apply_logging_config(level=logging.CRITICAL)
+
     # ------------------------------------------------------------------
     # Modbus helpers
     # ------------------------------------------------------------------
@@ -77,25 +80,23 @@ class EcoflowCoordinator(DataUpdateCoordinator):
 
     async def async_reconnect(self) -> bool:
         """Client-Reconnect"""
-        delays = [0, 15, 30, 60]  # Erster Versuch sofort (0s Wartezeit)
-        _LOGGER.debug("PowerOcean is not connected. Start reconnect!")
+        delays = [0, 5, 30, 60]
+        _LOGGER.info("PowerOcean is not connected. Start reconnect!")
 
         for i, delay in enumerate(delays):
             async with self._lock:
                 if delay > 0:
-                    _LOGGER.debug(
-                        f"Reconnect fehlgeschlagen. Warte {delay}s bis zum nächsten Versuch."
-                    )
+                    _LOGGER.info(f"Reconnect failed! Wait {delay}s until next attempt.")
                     await asyncio.sleep(delay)
 
-                _LOGGER.debug(f"Modbus TCP reconnect (Versuch {i + 1}/4)...")
+                _LOGGER.info(f"Modbus TCP reconnect (Attempt {i + 1}/4)...")
                 await self._client.connect()
                 if self._client.connected:
-                    _LOGGER.debug("Reconnect erfolgreich!")
+                    _LOGGER.info("Reconnect successful!")
                     return True
 
-        _LOGGER.error(
-            "Modbus TCP: Alle Reconnect-Versuche fehlgeschlagen! – will retry next poll"
+        _LOGGER.info(
+            "EF-Modbus-TCP: All reconnect attempts failed! – will retry next poll"
         )
         return False
 
@@ -133,7 +134,7 @@ class EcoflowCoordinator(DataUpdateCoordinator):
 
         # ── Check Connection, if not -> start reconnection ──
         if not self._client.connected and not await self.async_reconnect():
-            return None
+            raise UpdateFailed("Reconnect failed!")
 
         try:
             # ── Heartbeat: verify device is reachable before reading all blocks ──
@@ -288,12 +289,15 @@ class EcoflowCoordinator(DataUpdateCoordinator):
 
             return data
         except Exception as err:
-            _LOGGER.warning(f"Modbus-Error: {repr(err)}. Connection closing...")
+            _LOGGER.debug(f"Modbus-Error: {repr(err)}. Connection closing...")
             self._client.close()
             return None
 
     async def _async_update_data(self) -> dict:
         try:
             return await self._fetch_all()
-        except Exception as err:  # noqa: BLE001
-            raise UpdateFailed(f"Modbus read error.")
+        except UpdateFailed:  # noqa: BLE001
+            raise UpdateFailed(
+                "Reconnect attempts failed! Integration stopped. Retry after 60s.",
+                retry_after=60,
+            )
