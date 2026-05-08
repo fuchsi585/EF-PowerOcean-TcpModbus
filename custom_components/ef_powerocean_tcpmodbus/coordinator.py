@@ -106,7 +106,6 @@ class EcoflowCoordinator(DataUpdateCoordinator):
             res = await self._client.read_holding_registers(addr, count=count)
             if res.isError():
                 # Modbus error response – connection may be stale
-                self._client.close()
                 raise ModbusException(
                     f"Modbus error response at 0x{addr:04X} with Exception-Code {res.exception_code}"
                 )
@@ -118,12 +117,22 @@ class EcoflowCoordinator(DataUpdateCoordinator):
     def _f(regs: list[int], offset: int) -> float:
         """Decode a word-swapped 32-bit IEEE 754 float from two 16-bit registers."""
         if regs is None or len(regs) < offset + 2:
-            return 0.0
-        raw = struct.pack("<HH", regs[offset], regs[offset + 1])
-        value = struct.unpack("<f", raw)[0]
+            _LOGGER.info(
+                f"Return value of '{regs}' is inf ({abs(value)}) or NaN. Use last_written_value"
+            )
+            return None
+        try:
+            raw = struct.pack("<HH", regs[offset], regs[offset + 1])
+            value = struct.unpack("<f", raw)[0]
+        except struct.error, TypeError:
+            return None
+
         if abs(value) > 1e9 or value != value:  # guard against NaN / inf
-            return 0.0
-        return round(value, 3)
+            _LOGGER.info(
+                f"Return value of '{regs}' is inf ({abs(value)}) or NaN. Use last_written_value"
+            )
+            return None
+        return round(value, 2)
 
     # ------------------------------------------------------------------
     # Data fetch
@@ -172,6 +181,9 @@ class EcoflowCoordinator(DataUpdateCoordinator):
                 data["solar_power"] = max(self._f(b, 4), 0.0)  # 40523 ✅
                 data["battery_power"] = self._f(b, 6)  # 40525 ✅
                 data["battery_soc"] = float(b[8])  # 40527 – INT16, % ✅
+                if data["battery_soc"] < 5:
+                    _LOGGER.info(f"Battery SoC < 5% --> {data['battery_soc']}")
+                    _LOGGER.info("Heartbeat OK (reg %s = %s)", REG_STATUS, hb[0])
                 data["battery_capacity"] = self._battery_capacity  # user-configured kWh
                 data["bat_remaining"] = round(
                     self._battery_capacity * data["battery_soc"] / 100, 2
