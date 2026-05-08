@@ -38,6 +38,17 @@ class EcoflowSensorDescription(SensorEntityDescription):
     pass
 
 
+VALUE_PRICISION = {
+    PERCENTAGE: 0,
+    UnitOfPower.WATT: 0,
+    UnitOfEnergy.KILO_WATT_HOUR: 2,
+    UnitOfTemperature.CELSIUS: 1,
+    UnitOfFrequency.HERTZ: 0,
+    UnitOfApparentPower.VOLT_AMPERE: 0,
+    UnitOfElectricPotential.VOLT: 1,
+    UnitOfElectricCurrent.AMPERE: 2,
+}
+
 SENSORS: list[EcoflowSensorDescription] = [
     # ── System info ──────────────────────────────────────────────────────────
     EcoflowSensorDescription(
@@ -471,7 +482,12 @@ class EcoflowSensor(CoordinatorEntity[EcoflowCoordinator], RestoreSensor):
         if self.coordinator.data is not None:
             value = self.coordinator.data.get(self.entity_description.key, None)
             if value is not None:
-                return value
+                if precision := VALUE_PRICISION.get(
+                    self.entity_description.unit_of_measurement, None
+                ):
+                    return round(value, precision)
+                else:
+                    return value
         _LOGGER.info(
             f"No current value of '{self.entity_description.name}'. Use last_written_value: {self._last_written_value} (Restore-Value: {self._restored_value})"
         )
