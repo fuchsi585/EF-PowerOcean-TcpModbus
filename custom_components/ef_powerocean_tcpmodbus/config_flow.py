@@ -5,7 +5,7 @@ import logging
 from typing import Any
 
 import voluptuous as vol
-from pymodbus.client import ModbusTcpClient
+from pymodbus.client import AsyncModbusTcpClient
 
 from homeassistant import config_entries
 from homeassistant.data_entry_flow import FlowResult
@@ -20,6 +20,7 @@ from .const import (
     DEFAULT_SCAN_INTERVAL,
     DOMAIN,
     REG_STATUS,
+    DEFAULT_SLAVE
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -30,19 +31,21 @@ STEP_USER_DATA_SCHEMA = vol.Schema(
         vol.Optional("port", default=DEFAULT_PORT): int,
         vol.Optional(CONF_BATTERY_CAPACITY, default=DEFAULT_BATTERY_CAPACITY): vol.Coerce(float),
         vol.Optional(CONF_PV_STRINGS, default=DEFAULT_PV_STRINGS): vol.All(int, vol.Range(min=1, max=3)),
-        vol.Optional(CONF_SCAN_INTERVAL, default=DEFAULT_SCAN_INTERVAL): vol.All(int, vol.Range(min=5, max=60)),
+        vol.Optional(CONF_SCAN_INTERVAL, default=DEFAULT_SCAN_INTERVAL): vol.All(int, vol.Range(min=2, max=60)),
     }
 )
 
 
-def _test_connection(host: str, port: int) -> bool:
+async def async_test_connection(host: str, port: int) -> bool:
     """Try to connect and read status register."""
     try:
-        client = ModbusTcpClient(host, port=port, timeout=5)
-        client.unit_id = 1
-        if not client.connect():
+        client = AsyncModbusTcpClient(host, port=port, timeout=5)
+        client.unit_id = DEFAULT_SLAVE
+        await client.connect()
+        if not client.connected:
             return False
-        result = client.read_holding_registers(REG_STATUS, count=1)
+        
+        result = await client.read_holding_registers(REG_STATUS, count=1)
         client.close()
         return not result.isError()
     except Exception as e:
@@ -64,7 +67,7 @@ class EcoflowConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             host = user_input["host"]
             port = user_input.get("port", DEFAULT_PORT)
 
-            ok = await self.hass.async_add_executor_job(_test_connection, host, port)
+            ok = await async_test_connection(host, port)
 
             if ok:
                 await self.async_set_unique_id(f"{host}:{port}")
@@ -106,7 +109,7 @@ class EcoflowOptionsFlow(config_entries.OptionsFlow):
             current_host = self._config_entry.data.get("host")
             current_port = self._config_entry.data.get("port", DEFAULT_PORT)
             if host != current_host or port != current_port:
-                ok = await self.hass.async_add_executor_job(_test_connection, host, port)
+                ok = await async_test_connection(host, port)
                 if not ok:
                     errors["base"] = "cannot_connect"
 
@@ -142,7 +145,7 @@ class EcoflowOptionsFlow(config_entries.OptionsFlow):
                 vol.Optional(
                     CONF_SCAN_INTERVAL,
                     default=_current(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL),
-                ): vol.All(int, vol.Range(min=5, max=60)),
+                ): vol.All(int, vol.Range(min=2, max=60)),
             }
         )
 
