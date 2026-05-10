@@ -67,7 +67,7 @@ class EcoflowCoordinator(DataUpdateCoordinator):
 
     async def async_client_shutdown(self) -> None:
         """Integration-Shutdown, closing connection"""
-        _LOGGER.debug("PowerOcean Shutdown. Closing Connection!")
+        _LOGGER.info("PowerOcean Shutdown. Closing Connection!")
         self._client.close()
         await super().async_shutdown()
 
@@ -109,17 +109,12 @@ class EcoflowCoordinator(DataUpdateCoordinator):
                 raise ModbusException(
                     f"Modbus error response at 0x{addr:04X} with Exception-Code {res.exception_code}"
                 )
-
-            # _LOGGER.debug("Block 0x%04X(%d): %s", addr, count, res.registers)
             return res.registers
 
     @staticmethod
     def _f(regs: list[int], offset: int) -> float:
         """Decode a word-swapped 32-bit IEEE 754 float from two 16-bit registers."""
         if regs is None or len(regs) < offset + 2:
-            _LOGGER.info(
-                f"Return value of '{regs}' is None, because wrong length (len: {len(regs)}, offset: {offset}). Use last_written_value"
-            )
             return None
         try:
             raw = struct.pack("<HH", regs[offset], regs[offset + 1])
@@ -128,9 +123,6 @@ class EcoflowCoordinator(DataUpdateCoordinator):
             return None
 
         if abs(value) > 1e9 or value != value:  # guard against NaN / inf
-            _LOGGER.info(
-                f"Return value of '{regs}' is inf ({abs(value)}) or NaN. Use last_written_value"
-            )
             return None
         return round(value, 2)
 
@@ -150,17 +142,16 @@ class EcoflowCoordinator(DataUpdateCoordinator):
             hb = await self._read_block(REG_STATUS, 1)
             if hb[0] != 2:
                 _LOGGER.info(
-                    f"Heartbeat not OK (reg {REG_STATUS} = {hb[0]}) -> Skip data! Wait 35s"
+                    f"Heartbeat not OK (reg {REG_STATUS} = {hb[0]}) -> Skip data! Wait 35s for reconnect!"
                 )
                 self._client.close()
-                asyncio.sleep(35)
+                await asyncio.sleep(35)
                 return None
             _LOGGER.debug("Heartbeat OK (reg %s = %s)", REG_STATUS, hb[0])
 
             # ── Block A: Serial number + operation mode (40004, 12 regs) ──────────
             await asyncio.sleep(SLEEP_TIME_AFTER_HEARTBEAT)
-            a = await self._read_block(_REG_SERIAL, 12)
-            if a:
+            if a := await self._read_block(_REG_SERIAL, 12):
                 # Serial number is ASCII-encoded across registers 0-7 (2 chars each)
                 sn = "".join(chr((r >> 8) & 0xFF) + chr(r & 0xFF) for r in a[0:8])
                 data["serial_number"] = sn.strip().replace("\x00", "")
@@ -168,29 +159,27 @@ class EcoflowCoordinator(DataUpdateCoordinator):
 
             # ── Block B: Main power values (40519, 34 regs) ──────────────────────
             await asyncio.sleep(SLEEP_TIME_AFTER_READ_BLOCK)
-            b = await self._read_block(
-                _REG_MAIN, 30
-            )  # 40519–40548, last needed index = 29
-            if b:
-                # _LOGGER.debug(
-                #     "Block B raw (40519+): house=(%04X,%04X) grid=(%04X,%04X) solar=(%04X,%04X) bat=(%04X,%04X)",
-                #     b[0],
-                #     b[1],
-                #     b[2],
-                #     b[3],
-                #     b[4],
-                #     b[5],
-                #     b[6],
-                #     b[7],
-                # )
+            # 40519–40548, last needed index = 29
+            if b := await self._read_block(_REG_MAIN, 30):
+                _LOGGER.debug(
+                    "Block B raw (40519+): house=(%04X,%04X) grid=(%04X,%04X) solar=(%04X,%04X) bat=(%04X,%04X)",
+                    b[0],
+                    b[1],
+                    b[2],
+                    b[3],
+                    b[4],
+                    b[5],
+                    b[6],
+                    b[7],
+                )
                 data["house_power"] = self._f(b, 0)  # 40519 ✅
                 data["grid_power"] = self._f(b, 2)  # 40521 ✅
                 data["solar_power"] = max(self._f(b, 4), 0.0)  # 40523 ✅
                 data["battery_power"] = self._f(b, 6)  # 40525 ✅
                 data["battery_soc"] = float(b[8])  # 40527 – INT16, % ✅
-                if data["battery_soc"] < 5:
-                    _LOGGER.info(f"Battery SoC < 5% --> {data['battery_soc']}")
-                    _LOGGER.info("Heartbeat OK (reg %s = %s)", REG_STATUS, hb[0])
+                # if data["battery_soc"] < 5:
+                #     _LOGGER.info(f"Battery SoC < 5% --> {data['battery_soc']}")
+                #     _LOGGER.info("Heartbeat OK (reg %s = %s)", REG_STATUS, hb[0])
                 data["battery_capacity"] = self._battery_capacity  # user-configured kWh
                 data["bat_remaining"] = round(
                     self._battery_capacity * data["battery_soc"] / 100, 2
@@ -208,8 +197,7 @@ class EcoflowCoordinator(DataUpdateCoordinator):
 
             # ── Block C: Battery detail (40574, 6 regs) ───────────────────────────
             await asyncio.sleep(SLEEP_TIME_AFTER_READ_BLOCK)
-            c = await self._read_block(_REG_BAT_DETAIL, 6)
-            if c:
+            if c := await self._read_block(_REG_BAT_DETAIL, 6):
                 data["battery_voltage"] = self._f(c, 0)  # 40574 ✅
                 data["battery_current"] = self._f(c, 2)  # 40576 ✅
                 data["battery_temperature"] = self._f(
@@ -218,8 +206,7 @@ class EcoflowCoordinator(DataUpdateCoordinator):
 
             # ── Block D: AC grid + PV strings (40580, 28 regs → up to 40607) ──────
             await asyncio.sleep(SLEEP_TIME_AFTER_READ_BLOCK)
-            d = await self._read_block(_REG_AC_PV, 28)
-            if d:
+            if d := await self._read_block(_REG_AC_PV, 28):
                 data["voltage_l1"] = self._f(d, 0)  # 40580 ✅
                 data["voltage_l2"] = self._f(d, 2)  # 40582 ✅
                 data["voltage_l3"] = self._f(d, 4)  # 40584 ✅
@@ -269,8 +256,7 @@ class EcoflowCoordinator(DataUpdateCoordinator):
             # ── Block E: Energy counters (42161, 100 regs) ────────────────────────
             # Offsets = register_address - 42161
             await asyncio.sleep(SLEEP_TIME_AFTER_READ_BLOCK)
-            e = await self._read_block(_REG_ENERGY, 100)
-            if e:
+            if e := await self._read_block(_REG_ENERGY, 100):
                 data["grid_import_total"] = self._f(e, 0)  # 42161 ✅
                 data["grid_import_today"] = self._f(e, 2)  # 42163 ✅
                 data["grid_export_total"] = self._f(e, 16)  # 42177 ✅

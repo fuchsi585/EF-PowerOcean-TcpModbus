@@ -475,7 +475,7 @@ class EcoflowSensor(CoordinatorEntity[EcoflowCoordinator], RestoreSensor):
         if (
             last_value := await self.async_get_last_sensor_data()
         ) and last_value.native_value is not None:
-            _LOGGER.info(
+            _LOGGER.debug(
                 f"Restore Sensor '{self.entity_description.name}' with value: {last_value.native_value}"
             )
             self._restored_value = last_value.native_value
