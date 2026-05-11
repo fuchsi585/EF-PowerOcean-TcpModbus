@@ -14,7 +14,6 @@ from homeassistant.components.sensor import (
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import (
     PERCENTAGE,
-    UnitOfApparentPower,
     UnitOfElectricCurrent,
     UnitOfElectricPotential,
     UnitOfEnergy,
@@ -44,7 +43,6 @@ VALUE_PRICISION = {
     UnitOfEnergy.KILO_WATT_HOUR: 2,
     UnitOfTemperature.CELSIUS: 1,
     UnitOfFrequency.HERTZ: 0,
-    UnitOfApparentPower.VOLT_AMPERE: 0,
     UnitOfElectricPotential.VOLT: 1,
     UnitOfElectricCurrent.AMPERE: 2,
 }
@@ -194,9 +192,27 @@ SENSORS: list[EcoflowSensorDescription] = [
         state_class=SensorStateClass.MEASUREMENT,
         entity_category=EntityCategory.DIAGNOSTIC,
     ),
+    # FIX: pv_voltage (global) ersetzt durch individuelle String-Spannungen
+    # Register 40596/40598/40600 sind laut Community-Map PV-String-Spannungen
     EcoflowSensorDescription(
-        key="pv_voltage",
-        name="PV Voltage Global",
+        key="pv1_voltage",
+        name="PV String 1 Voltage",
+        native_unit_of_measurement=UnitOfElectricPotential.VOLT,
+        device_class=SensorDeviceClass.VOLTAGE,
+        state_class=SensorStateClass.MEASUREMENT,
+        entity_category=EntityCategory.DIAGNOSTIC,
+    ),
+    EcoflowSensorDescription(
+        key="pv2_voltage",
+        name="PV String 2 Voltage",
+        native_unit_of_measurement=UnitOfElectricPotential.VOLT,
+        device_class=SensorDeviceClass.VOLTAGE,
+        state_class=SensorStateClass.MEASUREMENT,
+        entity_category=EntityCategory.DIAGNOSTIC,
+    ),
+    EcoflowSensorDescription(
+        key="pv3_voltage",
+        name="PV String 3 Voltage",
         native_unit_of_measurement=UnitOfElectricPotential.VOLT,
         device_class=SensorDeviceClass.VOLTAGE,
         state_class=SensorStateClass.MEASUREMENT,
@@ -280,14 +296,7 @@ SENSORS: list[EcoflowSensorDescription] = [
         state_class=SensorStateClass.MEASUREMENT,
         entity_category=EntityCategory.DIAGNOSTIC,
     ),
-    EcoflowSensorDescription(
-        key="apparent_power",
-        name="Grid Apparent Power",
-        native_unit_of_measurement=UnitOfApparentPower.VOLT_AMPERE,
-        device_class=SensorDeviceClass.APPARENT_POWER,
-        state_class=SensorStateClass.MEASUREMENT,
-        entity_category=EntityCategory.DIAGNOSTIC,
-    ),
+    # FIX: apparent_power entfernt – Register 40596 ist laut Community-Map pv1_voltage
     # ── Inverter ─────────────────────────────────────────────────────────────
     EcoflowSensorDescription(
         key="inverter_temperature",
