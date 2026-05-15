@@ -25,8 +25,8 @@ _REG_AC_PV = 40580  # Grid voltages/currents, frequency, apparent power,
 # PV string voltages, inverter temp, PV string currents
 _REG_ENERGY = 42161  # kWh counters
 
-SLEEP_TIME_AFTER_RECONNECT = 1
-SLEEP_TIME_AFTER_HEARTBEAT_FAILED = 35
+SLEEP_TIME_AFTER_RECONNECT = 1.0
+SLEEP_TIME_AFTER_HEARTBEAT_FAILED = 35.0
 
 
 class EcoflowCoordinator(DataUpdateCoordinator):
