@@ -22,7 +22,7 @@ _REG_SERIAL = 40004  # Serial number + operation mode
 _REG_MAIN = 40519  # house_con, grid, solar, battery, soc, bat_cap, limits …
 _REG_BAT_DETAIL = 40574  # Battery voltage, current, temperature
 _REG_AC_PV = 40580  # Grid voltages/currents, frequency, apparent power,
-# PV global voltage, inverter temp, PV string currents
+# PV string voltages, inverter temp, PV string currents
 _REG_ENERGY = 42161  # kWh counters
 
 SLEEP_TIME_AFTER_RECONNECT = 1
@@ -115,7 +115,7 @@ class EcoflowCoordinator(DataUpdateCoordinator):
         try:
             raw = struct.pack("<HH", regs[offset], regs[offset + 1])
             value = struct.unpack("<f", raw)[0]
-        except (struct.error, TypeError):
+        except (struct.error, TypeError):  # FIX: korrekte Python-3-Syntax
             return None
 
         if abs(value) > 1e9 or value != value:  # guard against NaN / inf
@@ -152,7 +152,7 @@ class EcoflowCoordinator(DataUpdateCoordinator):
                 data["serial_number"] = sn.strip().replace("\x00", "")
                 data["operation_mode"] = a[9] if len(a) > 9 else None
 
-            # ── Block B: Main power values (40519, 34 regs) ──────────────────────
+            # ── Block B: Main power values (40519, 30 regs) ──────────────────────
             # 40519–40548, last needed index = 29
             if b := await self._read_block(_REG_MAIN, 30):
                 _LOGGER.debug(
@@ -196,24 +196,24 @@ class EcoflowCoordinator(DataUpdateCoordinator):
 
             # ── Block D: AC grid + PV strings (40580, 28 regs → up to 40607) ──────
             if d := await self._read_block(_REG_AC_PV, 28):
-                data["voltage_l1"] = self._f(d, 0)  # 40580 ✅
-                data["voltage_l2"] = self._f(d, 2)  # 40582 ✅
-                data["voltage_l3"] = self._f(d, 4)  # 40584 ✅
-                data["current_l1"] = self._f(d, 6)  # 40586 ✅
-                data["current_l2"] = self._f(d, 8)  # 40588 ✅
+                data["voltage_l1"] = self._f(d, 0)   # 40580 ✅
+                data["voltage_l2"] = self._f(d, 2)   # 40582 ✅
+                data["voltage_l3"] = self._f(d, 4)   # 40584 ✅
+                data["current_l1"] = self._f(d, 6)   # 40586 ✅
+                data["current_l2"] = self._f(d, 8)   # 40588 ✅
                 data["current_l3"] = self._f(d, 10)  # 40590 ✅
                 data["inverter_temperature"] = self._f(d, 12)  # 40592 ✅
-                data["frequency"] = self._f(d, 14)  # 40594 ✅
-                data["apparent_power"] = self._f(d, 16)  # 40596 ✅
-                v_pv_global = self._f(d, 18)  # 40598 ✅
-                data["pv_voltage"] = v_pv_global
+                data["frequency"] = self._f(d, 14)   # 40594 ✅
+                # FIX: Register 40596–40601 sind PV-String-Spannungen, NICHT apparent_power
+                data["pv1_voltage"] = self._f(d, 16)  # 40596 ✅ (Community-Map bestätigt)
+                data["pv2_voltage"] = self._f(d, 18)  # 40598 ✅
+                data["pv3_voltage"] = self._f(d, 20)  # 40600 ⚠️ not in verified list
 
-                # 40600–40601 (offset 20-21): not in verified register list
                 # Apply threshold to filter phantom currents, zero out unconfigured strings
                 def _pv_current(raw: float, string_nr: int) -> float:
                     if string_nr > self._pv_strings:
                         return 0.0
-                    return raw if raw > PV_CURRENT_THRESHOLD else 0.0
+                    return raw if raw >= PV_CURRENT_THRESHOLD else 0.0  # FIX: >= statt >
 
                 data["pv1_current"] = _pv_current(self._f(d, 22), 1)  # 40602 ✅
                 data["pv2_current"] = _pv_current(self._f(d, 24), 2)  # 40604 ✅
@@ -221,10 +221,10 @@ class EcoflowCoordinator(DataUpdateCoordinator):
                     self._f(d, 26), 3
                 )  # 40606 ⚠️ not in verified list
 
-                # Calculated PV power per string (current × global PV voltage)
-                data["pv1_power"] = round(data["pv1_current"] * v_pv_global, 1)
-                data["pv2_power"] = round(data["pv2_current"] * v_pv_global, 1)
-                data["pv3_power"] = round(data["pv3_current"] * v_pv_global, 1)
+                # FIX: PV-Leistung pro String mit eigener Spannung berechnen
+                data["pv1_power"] = round(data["pv1_current"] * (data["pv1_voltage"] or 0.0), 1)
+                data["pv2_power"] = round(data["pv2_current"] * (data["pv2_voltage"] or 0.0), 1)
+                data["pv3_power"] = round(data["pv3_current"] * (data["pv3_voltage"] or 0.0), 1)
 
                 # Solar power: sum of active strings only
                 data["solar_power"] = round(
@@ -245,16 +245,16 @@ class EcoflowCoordinator(DataUpdateCoordinator):
             # ── Block E: Energy counters (42161, 100 regs) ────────────────────────
             # Offsets = register_address - 42161
             if e := await self._read_block(_REG_ENERGY, 100):
-                data["grid_import_total"] = self._f(e, 0)  # 42161 ✅
-                data["grid_import_today"] = self._f(e, 2)  # 42163 ✅
+                data["grid_import_total"] = self._f(e, 0)   # 42161 ✅
+                data["grid_import_today"] = self._f(e, 2)   # 42163 ✅
                 data["grid_export_total"] = self._f(e, 16)  # 42177 ✅
                 data["grid_export_today"] = self._f(e, 18)  # 42179 ✅
                 data["bat_charged_total"] = self._f(e, 64)  # 42225 ✅
-                data["bat_charge_today"] = self._f(e, 66)  # 42227 ✅
+                data["bat_charge_today"] = self._f(e, 66)   # 42227 ✅
                 data["bat_discharged_total"] = self._f(e, 80)  # 42241 ✅
-                data["bat_discharge_today"] = self._f(e, 82)  # 42243 ✅
-                data["solar_total"] = self._f(e, 96)  # 42257 ✅
-                data["solar_today"] = self._f(e, 98)  # 42259 ✅
+                data["bat_discharge_today"] = self._f(e, 82)   # 42243 ✅
+                data["solar_total"] = self._f(e, 96)   # 42257 ✅
+                data["solar_today"] = self._f(e, 98)   # 42259 ✅
 
                 # Derived: battery net energy
                 data["bat_net_energy"] = round(
