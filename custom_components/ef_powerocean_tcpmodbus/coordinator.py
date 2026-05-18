@@ -280,11 +280,14 @@ class EcoflowCoordinator(DataUpdateCoordinator):
                 )
 
             return data
-        except Exception as err:
+        except ModbusException as err:
             _LOGGER.debug(f"Modbus-Error: {repr(err)}. Connection closing...")
             self._client.close()
             return None
-
+        except Exception as err:
+            _LOGGER.error(f"Unexpected error during data fetch: {repr(err)}")
+            return data
+            
     async def _async_update_data(self) -> dict:
         try:
             return await self._fetch_all()
