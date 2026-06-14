@@ -26,7 +26,7 @@ from homeassistant.helpers.entity import DeviceInfo, EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import DOMAIN
+from .const import DOMAIN, MOD_REGISTER_MAP
 from .coordinator import EcoflowCoordinator
 
 _LOGGER = logging.getLogger(__name__)
@@ -48,34 +48,14 @@ VALUE_PRECISION = {
 }
 
 SENSORS: list[EcoflowSensorDescription] = [
-    # ── System info ──────────────────────────────────────────────────────────
-    EcoflowSensorDescription(
-        key="serial_number",
-        name="Serial Number",
-        entity_category=EntityCategory.DIAGNOSTIC,
-        icon="mdi:identifier",
-    ),
-    EcoflowSensorDescription(
-        key="operation_mode",
-        name="Operation Mode",
-        entity_category=EntityCategory.DIAGNOSTIC,
-        icon="mdi:cog",
-    ),
     # ── Battery ──────────────────────────────────────────────────────────────
-    EcoflowSensorDescription(
-        key="battery_soc",
-        name="Battery SOC",
-        native_unit_of_measurement=PERCENTAGE,
-        device_class=SensorDeviceClass.BATTERY,
-        state_class=SensorStateClass.MEASUREMENT,
-    ),
-    EcoflowSensorDescription(
-        key="battery_power",
-        name="Battery Power",
-        native_unit_of_measurement=UnitOfPower.WATT,
-        device_class=SensorDeviceClass.POWER,
-        state_class=SensorStateClass.MEASUREMENT,
-    ),
+    # EcoflowSensorDescription(
+    #     key="battery_soc",
+    #     name="Battery SOC",
+    #     native_unit_of_measurement=PERCENTAGE,
+    #     device_class=SensorDeviceClass.BATTERY,
+    #     state_class=SensorStateClass.MEASUREMENT,
+    # ),
     EcoflowSensorDescription(
         key="bat_remaining",
         name="Battery Remaining Energy",
@@ -84,68 +64,12 @@ SENSORS: list[EcoflowSensorDescription] = [
         state_class=SensorStateClass.MEASUREMENT,
     ),
     EcoflowSensorDescription(
-        key="battery_voltage",
-        name="Battery Voltage",
-        native_unit_of_measurement=UnitOfElectricPotential.VOLT,
-        device_class=SensorDeviceClass.VOLTAGE,
-        state_class=SensorStateClass.MEASUREMENT,
-        entity_category=EntityCategory.DIAGNOSTIC,
-    ),
-    EcoflowSensorDescription(
-        key="battery_current",
-        name="Battery Current",
-        native_unit_of_measurement=UnitOfElectricCurrent.AMPERE,
-        device_class=SensorDeviceClass.CURRENT,
-        state_class=SensorStateClass.MEASUREMENT,
-        entity_category=EntityCategory.DIAGNOSTIC,
-    ),
-    EcoflowSensorDescription(
-        key="battery_temperature",
-        name="Battery Temperature",
-        native_unit_of_measurement=UnitOfTemperature.CELSIUS,
-        device_class=SensorDeviceClass.TEMPERATURE,
-        state_class=SensorStateClass.MEASUREMENT,
-        entity_category=EntityCategory.DIAGNOSTIC,
-    ),
-    EcoflowSensorDescription(
         key="battery_capacity",
         name="Battery Nominal Capacity",
         native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
         device_class=SensorDeviceClass.ENERGY_STORAGE,
         state_class=SensorStateClass.MEASUREMENT,
         entity_category=EntityCategory.DIAGNOSTIC,
-    ),
-    EcoflowSensorDescription(
-        key="min_soc_limit",
-        name="Min SOC Limit",
-        native_unit_of_measurement=PERCENTAGE,
-        state_class=SensorStateClass.MEASUREMENT,
-        entity_category=EntityCategory.DIAGNOSTIC,
-        icon="mdi:battery-arrow-down",
-    ),
-    EcoflowSensorDescription(
-        key="bat_temp_warn_max",
-        name="Battery Temp Warning Max",
-        native_unit_of_measurement=UnitOfTemperature.CELSIUS,
-        device_class=SensorDeviceClass.TEMPERATURE,
-        state_class=SensorStateClass.MEASUREMENT,
-        entity_category=EntityCategory.DIAGNOSTIC,
-    ),
-    EcoflowSensorDescription(
-        key="bat_temp_warn_min",
-        name="Battery Temp Warning Min",
-        native_unit_of_measurement=UnitOfTemperature.CELSIUS,
-        device_class=SensorDeviceClass.TEMPERATURE,
-        state_class=SensorStateClass.MEASUREMENT,
-        entity_category=EntityCategory.DIAGNOSTIC,
-    ),
-    # ── Solar ─────────────────────────────────────────────────────────────────
-    EcoflowSensorDescription(
-        key="solar_power",
-        name="Solar Power",
-        native_unit_of_measurement=UnitOfPower.WATT,
-        device_class=SensorDeviceClass.POWER,
-        state_class=SensorStateClass.MEASUREMENT,
     ),
     EcoflowSensorDescription(
         key="pv1_power",
@@ -168,177 +92,6 @@ SENSORS: list[EcoflowSensorDescription] = [
         device_class=SensorDeviceClass.POWER,
         state_class=SensorStateClass.MEASUREMENT,
     ),
-    EcoflowSensorDescription(
-        key="pv1_current",
-        name="PV String 1 Current",
-        native_unit_of_measurement=UnitOfElectricCurrent.AMPERE,
-        device_class=SensorDeviceClass.CURRENT,
-        state_class=SensorStateClass.MEASUREMENT,
-        entity_category=EntityCategory.DIAGNOSTIC,
-    ),
-    EcoflowSensorDescription(
-        key="pv2_current",
-        name="PV String 2 Current",
-        native_unit_of_measurement=UnitOfElectricCurrent.AMPERE,
-        device_class=SensorDeviceClass.CURRENT,
-        state_class=SensorStateClass.MEASUREMENT,
-        entity_category=EntityCategory.DIAGNOSTIC,
-    ),
-    EcoflowSensorDescription(
-        key="pv3_current",
-        name="PV String 3 Current",
-        native_unit_of_measurement=UnitOfElectricCurrent.AMPERE,
-        device_class=SensorDeviceClass.CURRENT,
-        state_class=SensorStateClass.MEASUREMENT,
-        entity_category=EntityCategory.DIAGNOSTIC,
-    ),
-    # FIX: pv_voltage (global) ersetzt durch individuelle String-Spannungen
-    # Register 40596/40598/40600 sind laut Community-Map PV-String-Spannungen
-    EcoflowSensorDescription(
-        key="pv1_voltage",
-        name="PV String 1 Voltage",
-        native_unit_of_measurement=UnitOfElectricPotential.VOLT,
-        device_class=SensorDeviceClass.VOLTAGE,
-        state_class=SensorStateClass.MEASUREMENT,
-        entity_category=EntityCategory.DIAGNOSTIC,
-    ),
-    EcoflowSensorDescription(
-        key="pv2_voltage",
-        name="PV String 2 Voltage",
-        native_unit_of_measurement=UnitOfElectricPotential.VOLT,
-        device_class=SensorDeviceClass.VOLTAGE,
-        state_class=SensorStateClass.MEASUREMENT,
-        entity_category=EntityCategory.DIAGNOSTIC,
-    ),
-    EcoflowSensorDescription(
-        key="pv3_voltage",
-        name="PV String 3 Voltage",
-        native_unit_of_measurement=UnitOfElectricPotential.VOLT,
-        device_class=SensorDeviceClass.VOLTAGE,
-        state_class=SensorStateClass.MEASUREMENT,
-        entity_category=EntityCategory.DIAGNOSTIC,
-    ),
-    # ── Grid & house ─────────────────────────────────────────────────────────
-    EcoflowSensorDescription(
-        key="house_power",
-        name="House Power",
-        native_unit_of_measurement=UnitOfPower.WATT,
-        device_class=SensorDeviceClass.POWER,
-        state_class=SensorStateClass.MEASUREMENT,
-    ),
-    EcoflowSensorDescription(
-        key="grid_power",
-        name="Grid Power",
-        native_unit_of_measurement=UnitOfPower.WATT,
-        device_class=SensorDeviceClass.POWER,
-        state_class=SensorStateClass.MEASUREMENT,
-    ),
-    EcoflowSensorDescription(
-        key="inverter_ac_power",
-        name="Inverter AC Power",
-        native_unit_of_measurement=UnitOfPower.WATT,
-        device_class=SensorDeviceClass.POWER,
-        state_class=SensorStateClass.MEASUREMENT,
-    ),
-    EcoflowSensorDescription(
-        key="voltage_l1",
-        name="Grid Voltage L1",
-        native_unit_of_measurement=UnitOfElectricPotential.VOLT,
-        device_class=SensorDeviceClass.VOLTAGE,
-        state_class=SensorStateClass.MEASUREMENT,
-        entity_category=EntityCategory.DIAGNOSTIC,
-    ),
-    EcoflowSensorDescription(
-        key="voltage_l2",
-        name="Grid Voltage L2",
-        native_unit_of_measurement=UnitOfElectricPotential.VOLT,
-        device_class=SensorDeviceClass.VOLTAGE,
-        state_class=SensorStateClass.MEASUREMENT,
-        entity_category=EntityCategory.DIAGNOSTIC,
-    ),
-    EcoflowSensorDescription(
-        key="voltage_l3",
-        name="Grid Voltage L3",
-        native_unit_of_measurement=UnitOfElectricPotential.VOLT,
-        device_class=SensorDeviceClass.VOLTAGE,
-        state_class=SensorStateClass.MEASUREMENT,
-        entity_category=EntityCategory.DIAGNOSTIC,
-    ),
-    EcoflowSensorDescription(
-        key="current_l1",
-        name="Grid Current L1",
-        native_unit_of_measurement=UnitOfElectricCurrent.AMPERE,
-        device_class=SensorDeviceClass.CURRENT,
-        state_class=SensorStateClass.MEASUREMENT,
-        entity_category=EntityCategory.DIAGNOSTIC,
-    ),
-    EcoflowSensorDescription(
-        key="current_l2",
-        name="Grid Current L2",
-        native_unit_of_measurement=UnitOfElectricCurrent.AMPERE,
-        device_class=SensorDeviceClass.CURRENT,
-        state_class=SensorStateClass.MEASUREMENT,
-        entity_category=EntityCategory.DIAGNOSTIC,
-    ),
-    EcoflowSensorDescription(
-        key="current_l3",
-        name="Grid Current L3",
-        native_unit_of_measurement=UnitOfElectricCurrent.AMPERE,
-        device_class=SensorDeviceClass.CURRENT,
-        state_class=SensorStateClass.MEASUREMENT,
-        entity_category=EntityCategory.DIAGNOSTIC,
-    ),
-    EcoflowSensorDescription(
-        key="frequency",
-        name="Grid Frequency",
-        native_unit_of_measurement=UnitOfFrequency.HERTZ,
-        device_class=SensorDeviceClass.FREQUENCY,
-        state_class=SensorStateClass.MEASUREMENT,
-        entity_category=EntityCategory.DIAGNOSTIC,
-    ),
-    # FIX: apparent_power entfernt – Register 40596 ist laut Community-Map pv1_voltage
-    # ── Inverter ─────────────────────────────────────────────────────────────
-    EcoflowSensorDescription(
-        key="inverter_temperature",
-        name="Inverter Temperature",
-        native_unit_of_measurement=UnitOfTemperature.CELSIUS,
-        device_class=SensorDeviceClass.TEMPERATURE,
-        state_class=SensorStateClass.MEASUREMENT,
-        entity_category=EntityCategory.DIAGNOSTIC,
-    ),
-    # ── Power limits ─────────────────────────────────────────────────────────
-    EcoflowSensorDescription(
-        key="limit_inv_max",
-        name="Inverter Nominal Power Limit",
-        native_unit_of_measurement=UnitOfPower.WATT,
-        device_class=SensorDeviceClass.POWER,
-        state_class=SensorStateClass.MEASUREMENT,
-        entity_category=EntityCategory.DIAGNOSTIC,
-    ),
-    EcoflowSensorDescription(
-        key="limit_inv_power",
-        name="Inverter Current Max Power",
-        native_unit_of_measurement=UnitOfPower.WATT,
-        device_class=SensorDeviceClass.POWER,
-        state_class=SensorStateClass.MEASUREMENT,
-        entity_category=EntityCategory.DIAGNOSTIC,
-    ),
-    EcoflowSensorDescription(
-        key="limit_discharge",
-        name="Max Battery Discharge Power",
-        native_unit_of_measurement=UnitOfPower.WATT,
-        device_class=SensorDeviceClass.POWER,
-        state_class=SensorStateClass.MEASUREMENT,
-        entity_category=EntityCategory.DIAGNOSTIC,
-    ),
-    EcoflowSensorDescription(
-        key="limit_charge",
-        name="Max Charge Power",
-        native_unit_of_measurement=UnitOfPower.WATT,
-        device_class=SensorDeviceClass.POWER,
-        state_class=SensorStateClass.MEASUREMENT,
-        entity_category=EntityCategory.DIAGNOSTIC,
-    ),
     # ── Energy – Today ────────────────────────────────────────────────────────
     EcoflowSensorDescription(
         key="house_energy_today",
@@ -347,82 +100,10 @@ SENSORS: list[EcoflowSensorDescription] = [
         device_class=SensorDeviceClass.ENERGY,
         state_class=SensorStateClass.TOTAL_INCREASING,
     ),
-    EcoflowSensorDescription(
-        key="solar_today",
-        name="Solar Yield Today",
-        native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
-        device_class=SensorDeviceClass.ENERGY,
-        state_class=SensorStateClass.TOTAL_INCREASING,
-    ),
-    EcoflowSensorDescription(
-        key="grid_import_today",
-        name="Grid Import Today",
-        native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
-        device_class=SensorDeviceClass.ENERGY,
-        state_class=SensorStateClass.TOTAL_INCREASING,
-    ),
-    EcoflowSensorDescription(
-        key="grid_export_today",
-        name="Grid Export Today",
-        native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
-        device_class=SensorDeviceClass.ENERGY,
-        state_class=SensorStateClass.TOTAL_INCREASING,
-    ),
-    EcoflowSensorDescription(
-        key="bat_charge_today",
-        name="Battery Charged Today",
-        native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
-        device_class=SensorDeviceClass.ENERGY,
-        state_class=SensorStateClass.TOTAL_INCREASING,
-    ),
-    EcoflowSensorDescription(
-        key="bat_discharge_today",
-        name="Battery Discharged Today",
-        native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
-        device_class=SensorDeviceClass.ENERGY,
-        state_class=SensorStateClass.TOTAL_INCREASING,
-    ),
-    # Note: pv1_today / pv2_today removed – use solar_today (total) instead.
-    # Individual string energy counters are not available via Modbus.
     # ── Energy – Lifetime ─────────────────────────────────────────────────────
     EcoflowSensorDescription(
         key="house_energy_total",
         name="House Consumption Total",
-        native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
-        device_class=SensorDeviceClass.ENERGY,
-        state_class=SensorStateClass.TOTAL_INCREASING,
-    ),
-    EcoflowSensorDescription(
-        key="solar_total",
-        name="Solar Yield Total",
-        native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
-        device_class=SensorDeviceClass.ENERGY,
-        state_class=SensorStateClass.TOTAL_INCREASING,
-    ),
-    EcoflowSensorDescription(
-        key="grid_import_total",
-        name="Grid Import Total",
-        native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
-        device_class=SensorDeviceClass.ENERGY,
-        state_class=SensorStateClass.TOTAL_INCREASING,
-    ),
-    EcoflowSensorDescription(
-        key="grid_export_total",
-        name="Grid Export Total",
-        native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
-        device_class=SensorDeviceClass.ENERGY,
-        state_class=SensorStateClass.TOTAL_INCREASING,
-    ),
-    EcoflowSensorDescription(
-        key="bat_charged_total",
-        name="Battery Charged Total",
-        native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
-        device_class=SensorDeviceClass.ENERGY,
-        state_class=SensorStateClass.TOTAL_INCREASING,
-    ),
-    EcoflowSensorDescription(
-        key="bat_discharged_total",
-        name="Battery Discharged Total",
         native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
         device_class=SensorDeviceClass.ENERGY,
         state_class=SensorStateClass.TOTAL_INCREASING,
@@ -443,9 +124,25 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     coordinator: EcoflowCoordinator = hass.data[DOMAIN][entry.entry_id]
+    entities: list = []
     async_add_entities(
         EcoflowSensor(coordinator, description, entry) for description in SENSORS
     )
+
+    for blocks in MOD_REGISTER_MAP["blocks"]:
+        for register in blocks.content:
+            description = EcoflowSensorDescription(
+                key=register.key,
+                name=register.name,
+                native_unit_of_measurement=register.unit,
+                device_class=register.device_class,
+                state_class=register.state_class,
+                # entity_category=register.entity_category,
+            )
+            if register.entity_category:
+                description.entity_category = EntityCategory.DIAGNOSTIC
+            entities.append(EcoflowSensor(coordinator, description, entry))
+    async_add_entities(entities)
 
 
 class EcoflowSensor(CoordinatorEntity[EcoflowCoordinator], RestoreSensor):
