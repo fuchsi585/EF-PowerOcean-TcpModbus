@@ -298,7 +298,7 @@ MOD_REGISTER_MAP = {
                     "Battery Module Count",
                     0,
                     None,
-                    "battery",
+                    None,
                     "measurement",
                     "diagnostic",
                     size=1,
