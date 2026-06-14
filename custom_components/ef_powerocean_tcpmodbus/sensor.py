@@ -137,10 +137,10 @@ async def async_setup_entry(
                 native_unit_of_measurement=register.unit,
                 device_class=register.device_class,
                 state_class=register.state_class,
-                # entity_category=register.entity_category,
             )
-            if register.entity_category:
+            if register.entity_category == "diagnostic":
                 description.entity_category = EntityCategory.DIAGNOSTIC
+
             entities.append(EcoflowSensor(coordinator, description, entry))
     async_add_entities(entities)
 
@@ -158,6 +158,7 @@ class EcoflowSensor(CoordinatorEntity[EcoflowCoordinator], RestoreSensor):
             name="EcoFlow PowerOcean",
             manufacturer="EcoFlow",
             model="PowerOcean",
+            serial_number=coordinator.serial_number,
         )
         self._restored_value: float | int | str | None = None
         self._last_written_value: float | int | str | None = None
