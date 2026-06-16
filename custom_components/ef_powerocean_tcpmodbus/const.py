@@ -1,5 +1,7 @@
 """Constants for EF-PowerOcean-TcpModbus integration."""
 
+from __future__ import annotations
+
 from dataclasses import dataclass
 
 DOMAIN = "ef_powerocean_tcpmodbus"
@@ -21,21 +23,15 @@ PV_CURRENT_THRESHOLD = (
 REG_STATUS = 42081  # UINT16 – 1 = Online
 
 
+# TODO
+# DEFAULT_BATTERY_COUNT muss über config vom User vorgeben werden
+
+
 @dataclass(frozen=True)
 class RegisterDef:
     key: str
-    name: str
     block_index: int
-    unit: str | None = None
-    device_class: str | None = None
-    state_class: str | None = None
-    entity_category: str | None = None
-    icon: str | None = None
     size: int = 2
-
-
-# TODO
-# DEFAULT_BATTERY_COUNT muss über config vom User vorgeben werden
 
 
 @dataclass(frozen=True)
@@ -43,6 +39,24 @@ class BlockDef:
     start_register: int
     content: list[RegisterDef]
     num_read_regs: int = 100
+
+
+@dataclass(frozen=True)
+class SensorDef:
+    key: str
+    name: str
+    unit: str | None = None
+    device_class: str | None = None
+    state_class: str | None = None
+    entity_category: str | None = None
+
+
+@dataclass(frozen=True)
+class EnergySensorDef:
+    key: str
+    name: str
+    reset_at_midnight: bool = False
+    max_power: int | None = None
 
 
 DEFAULT_BATTERY_COUNT = 2
@@ -55,370 +69,378 @@ MOD_REGISTER_MAP = {
         BlockDef(
             start_register=40519,
             content=[
-                RegisterDef(
-                    "house_power", "House Power", 0, "W", "power", "measurement"
-                ),
-                RegisterDef("grid_power", "Grid Power", 2, "W", "power", "measurement"),
-                RegisterDef(
-                    "solar_power",
-                    "Solar Power",
-                    4,
-                    "W",
-                    "power",
-                    "measurement",
-                ),
-                RegisterDef(
-                    "battery_power",
-                    "Battery Power",
-                    6,
-                    "W",
-                    "power",
-                    "measurement",
-                ),
-                RegisterDef(
-                    "battery_soc",
-                    "Battery SOC",
-                    8,
-                    "%",
-                    "battery",
-                    "measurement",
-                    size=1,
-                ),
-                # RegisterDef("inverter_ac_power", "Inverter AC Power", 11, "W", "power", "measurement"),
-                RegisterDef(
-                    "min_soc_limit",
-                    "Min SOC Limit",
-                    17,
-                    "%",
-                    "battery",
-                    "measurement",
-                    size=1,
-                ),
-                RegisterDef(
-                    "bat_temp_warn_max",
-                    "Battery Temp Warning Max",
-                    21,
-                    "°C",
-                    "temperature",
-                    "measurement",
-                    "diagnostic",
-                    size=1,
-                ),
-                RegisterDef(
-                    "bat_temp_warn_min",
-                    "Battery Temp Warning Min",
-                    22,
-                    "°C",
-                    "temperature",
-                    "measurement",
-                    "diagnostic",
-                    size=1,
-                ),
-                RegisterDef(
-                    "limit_inv_power",
-                    "Inverter Current Max Power",
-                    27,
-                    "W",
-                    "power",
-                    "measurement",
-                    "diagnostic",
-                    size=1,
-                ),
-                RegisterDef(
-                    "limit_inv_max",
-                    "Inverter Nominal Power Limit",
-                    29,
-                    "W",
-                    "power",
-                    "measurement",
-                    "diagnostic",
-                    size=1,
-                ),
-                RegisterDef(
-                    "battery_voltage",
-                    "Battery Voltage",
-                    55,
-                    "V",
-                    "voltage",
-                    "measurement",
-                    "diagnostic",
-                ),
-                RegisterDef(
-                    "battery_current",
-                    "Battery Current",
-                    57,
-                    "A",
-                    "current",
-                    "measurement",
-                    "diagnostic",
-                ),
-                RegisterDef(
-                    "battery_temperature",
-                    "Battery Temperature",
-                    59,
-                    "°C",
-                    "temperature",
-                    "measurement",
-                    "diagnostic",
-                ),
-                RegisterDef(
-                    "voltage_l1",
-                    "Grid Voltage L1",
-                    61,
-                    "V",
-                    "voltage",
-                    "measurement",
-                    "diagnostic",
-                ),
-                RegisterDef(
-                    "voltage_l2",
-                    "Grid Voltage L2",
-                    63,
-                    "V",
-                    "voltage",
-                    "measurement",
-                    "diagnostic",
-                ),
-                RegisterDef(
-                    "voltage_l3",
-                    "Grid Voltage L3",
-                    65,
-                    "V",
-                    "voltage",
-                    "measurement",
-                    "diagnostic",
-                ),
-                RegisterDef(
-                    "current_l1",
-                    "Grid Current L1",
-                    67,
-                    "A",
-                    "current",
-                    "measurement",
-                    "diagnostic",
-                ),
-                RegisterDef(
-                    "current_l2",
-                    "Grid Current L2",
-                    69,
-                    "A",
-                    "current",
-                    "measurement",
-                    "diagnostic",
-                ),
-                RegisterDef(
-                    "current_l3",
-                    "Grid Current L3",
-                    71,
-                    "A",
-                    "current",
-                    "measurement",
-                    "diagnostic",
-                ),
-                RegisterDef(
-                    "inverter_temperature",
-                    "Inverter Temperature",
-                    73,
-                    "°C",
-                    "temperature",
-                    "measurement",
-                    "diagnostic",
-                ),
-                RegisterDef(
-                    "frequency",
-                    "Grid Frequency",
-                    75,
-                    "Hz",
-                    "frequency",
-                    "measurement",
-                    "diagnostic",
-                ),
-                RegisterDef(
-                    "pv1_voltage",
-                    "PV String 1 Voltage",
-                    77,
-                    "V",
-                    "voltage",
-                    "measurement",
-                    "diagnostic",
-                ),
-                RegisterDef(
-                    "pv2_voltage",
-                    "PV String 2 Voltage",
-                    79,
-                    "V",
-                    "voltage",
-                    "measurement",
-                    "diagnostic",
-                ),
-                RegisterDef(
-                    "pv3_voltage",
-                    "PV String 3 Voltage",
-                    81,
-                    "V",
-                    "voltage",
-                    "measurement",
-                    "diagnostic",
-                ),
-                RegisterDef(
-                    "pv1_current",
-                    "PV String 1 Current",
-                    83,
-                    "A",
-                    "current",
-                    "measurement",
-                    "diagnostic",
-                ),
-                RegisterDef(
-                    "pv2_current",
-                    "PV String 2 Current",
-                    85,
-                    "A",
-                    "current",
-                    "measurement",
-                    "diagnostic",
-                ),
-                RegisterDef(
-                    "pv3_current",
-                    "PV String 3 Current",
-                    87,
-                    "A",
-                    "current",
-                    "measurement",
-                    "diagnostic",
-                ),
+                RegisterDef(key="house_power", block_index=0),
+                RegisterDef(key="grid_power", block_index=2),
+                RegisterDef(key="solar_power", block_index=4),
+                RegisterDef(key="battery_power", block_index=6),
+                RegisterDef(key="battery_soc", block_index=8, size=1),
+                # RegisterDef(key="inverter_ac_power", block_index=11),
+                RegisterDef(key="min_soc_limit", block_index=17, size=1),
+                RegisterDef(key="bat_temp_warn_max", block_index=21, size=1),
+                RegisterDef(key="bat_temp_warn_min", block_index=22, size=1),
+                RegisterDef(key="limit_inv_power", block_index=27, size=1),
+                RegisterDef(key="limit_inv_max", block_index=29, size=1),
+                RegisterDef(key="battery_voltage", block_index=55),
+                RegisterDef(key="battery_current", block_index=57),
+                RegisterDef(key="Battery Temperature", block_index=59),
+                RegisterDef(key="voltage_l1", block_index=61),
+                RegisterDef(key="voltage_l2", block_index=63),
+                RegisterDef(key="voltage_l3", block_index=65),
+                RegisterDef(key="current_l1", block_index=67),
+                RegisterDef(key="current_l2", block_index=69),
+                RegisterDef(key="current_l3", block_index=71),
+                RegisterDef(key="inverter_temperature", block_index=73),
+                RegisterDef(key="frequency", block_index=75),
+                RegisterDef(key="pv1_voltage", block_index=77),
+                RegisterDef(key="pv2_voltage", block_index=79),
+                RegisterDef(key="pv3_voltage", block_index=81),
+                RegisterDef(key="pv1_current", block_index=83),
+                RegisterDef(key="pv2_current", block_index=85),
+                RegisterDef(key="pv3_current", block_index=87),
             ],
         ),
         BlockDef(
             start_register=42081,
             num_read_regs=4,
             content=[
-                RegisterDef(
-                    "battery_count",
-                    "Battery Module Count",
-                    0,
-                    None,
-                    None,
-                    "measurement",
-                    "diagnostic",
-                    size=1,
-                ),
-                RegisterDef(
-                    "soc_battery_1",
-                    "SOC Battery 1",
-                    1,
-                    "%",
-                    "battery",
-                    "measurement",
-                    "diagnostic",
-                    size=1,
-                ),
-                RegisterDef(
-                    "soc_battery_2",
-                    "SOC Battery 2",
-                    2,
-                    "%",
-                    "battery",
-                    "measurement",
-                    "diagnostic",
-                    size=1,
-                ),
-                RegisterDef(
-                    "soc_battery_3",
-                    "SOC Battery 3",
-                    3,
-                    "%",
-                    "battery",
-                    "measurement",
-                    "diagnostic",
-                    size=1,
-                ),
+                RegisterDef(key="battery_count", block_index=0, size=1),
+                RegisterDef(key="soc_battery_1", block_index=1, size=1),
+                RegisterDef(key="soc_battery_2", block_index=2, size=1),
+                RegisterDef(key="soc_battery_3", block_index=3, size=1),
             ],
         ),
         BlockDef(
             start_register=42161,
             content=[
-                RegisterDef(
-                    "grid_import_total",
-                    "Grid Import Total",
-                    0,
-                    "kWh",
-                    "energy",
-                    "total_increasing",
-                ),
-                RegisterDef(
-                    "grid_import_today",
-                    "Grid Import Today",
-                    2,
-                    "kWh",
-                    "energy",
-                    "total_increasing",
-                ),
-                RegisterDef(
-                    "grid_export_total",
-                    "Grid Export Total",
-                    16,
-                    "kWh",
-                    "energy",
-                    "total_increasing",
-                ),
-                RegisterDef(
-                    "grid_export_today",
-                    "Grid Export Today",
-                    18,
-                    "kWh",
-                    "energy",
-                    "total_increasing",
-                ),
-                RegisterDef(
-                    "bat_charged_total",
-                    "Battery Charged Total",
-                    64,
-                    "kWh",
-                    "energy",
-                    "total_increasing",
-                ),
-                RegisterDef(
-                    "bat_charged_today",
-                    "Battery Charged Today",
-                    66,
-                    "kWh",
-                    "energy",
-                    "total_increasing",
-                ),
-                RegisterDef(
-                    "bat_discharged_total",
-                    "Battery Discharged Total",
-                    80,
-                    "kWh",
-                    "energy",
-                    "total_increasing",
-                ),
-                RegisterDef(
-                    "bat_discharged_today",
-                    "Battery Discharged Today",
-                    82,
-                    "kWh",
-                    "energy",
-                    "total_increasing",
-                ),
-                RegisterDef(
-                    "solar_total",
-                    "Solar Yield Total",
-                    96,
-                    "kWh",
-                    "energy",
-                    "total_increasing",
-                ),
-                RegisterDef(
-                    "solar_today",
-                    "Solar Yield Today",
-                    98,
-                    "kWh",
-                    "energy",
-                    "total_increasing",
-                ),
+                RegisterDef(key="grid_import_total", block_index=0),
+                RegisterDef(key="grid_import_today", block_index=2),
+                RegisterDef(key="grid_export_total", block_index=16),
+                RegisterDef(key="grid_export_today", block_index=18),
+                RegisterDef(key="bat_charged_total", block_index=64),
+                RegisterDef(key="bat_charged_today", block_index=66),
+                RegisterDef(key="bat_discharged_total", block_index=80),
+                RegisterDef(key="bat_discharged_today", block_index=82),
+                RegisterDef(key="solar_total", block_index=96),
+                RegisterDef(key="solar_today", block_index=98),
             ],
         ),
     ],
 }
+
+MAX_SOLAR_POWER = 114000  # Vorgabe über conf
+MAX_GRID_POWER = 30000  # Vorgabe über conf
+MAX_BATTERY_CHARGED_POWER = 2500
+MAX_BATTERY_DISCHARGED_POWER = 3300
+
+SENSOR_MAP: list[SensorDef] = [
+    SensorDef(
+        key="house_power",
+        name="House Power",
+        unit="W",
+        device_class="power",
+        state_class="measurement",
+    ),
+    SensorDef(
+        key="grid_power",
+        name="Grid Power",
+        unit="W",
+        device_class="power",
+        state_class="measurement",
+    ),
+    SensorDef(
+        key="solar_power",
+        name="Solar Power",
+        unit="W",
+        device_class="power",
+        state_class="measurement",
+    ),
+    SensorDef(
+        key="battery_power",
+        name="Battery Power",
+        unit="W",
+        device_class="power",
+        state_class="measurement",
+    ),
+    SensorDef(
+        key="battery_soc",
+        name="Battery SOC",
+        unit="%",
+        device_class="battery",
+        state_class="measurement",
+    ),
+    SensorDef(
+        key="min_soc_limit",
+        name="Min SOC Limit",
+        unit="%",
+        device_class="battery",
+        state_class="measurement",
+    ),
+    SensorDef(
+        key="bat_temp_warn_max",
+        name="Battery Temp Warning Max",
+        unit="°C",
+        device_class="temperature",
+        state_class="measurement",
+        entity_category="diagnostic",
+    ),
+    SensorDef(
+        key="bat_temp_warn_min",
+        name="Battery Temp Warning Min",
+        unit="°C",
+        device_class="temperature",
+        state_class="measurement",
+        entity_category="diagnostic",
+    ),
+    SensorDef(
+        key="limit_inv_power",
+        name="Inverter Current Max Power",
+        unit="W",
+        device_class="power",
+        state_class="measurement",
+        entity_category="diagnostic",
+    ),
+    SensorDef(
+        key="limit_inv_max",
+        name="Inverter Nominal Power Limit",
+        unit="W",
+        device_class="power",
+        state_class="measurement",
+        entity_category="diagnostic",
+    ),
+    SensorDef(
+        key="battery_voltage",
+        name="Battery Voltage",
+        unit="V",
+        device_class="voltage",
+        state_class="measurement",
+        entity_category="diagnostic",
+    ),
+    SensorDef(
+        key="battery_current",
+        name="Battery Current",
+        unit="A",
+        device_class="current",
+        state_class="measurement",
+        entity_category="diagnostic",
+    ),
+    SensorDef(
+        key="battery_temperature",
+        name="Battery Temperature",
+        unit="°C",
+        device_class="temperature",
+        state_class="measurement",
+        entity_category="diagnostic",
+    ),
+    SensorDef(
+        key="voltage_l1",
+        name="Grid Voltage L1",
+        unit="V",
+        device_class="voltage",
+        state_class="measurement",
+        entity_category="diagnostic",
+    ),
+    SensorDef(
+        key="voltage_l2",
+        name="Grid Voltage L2",
+        unit="V",
+        device_class="voltage",
+        state_class="measurement",
+        entity_category="diagnostic",
+    ),
+    SensorDef(
+        key="voltage_l3",
+        name="Grid Voltage L3",
+        unit="V",
+        device_class="voltage",
+        state_class="measurement",
+        entity_category="diagnostic",
+    ),
+    SensorDef(
+        key="current_l1",
+        name="Grid Current L1",
+        unit="A",
+        device_class="current",
+        state_class="measurement",
+        entity_category="diagnostic",
+    ),
+    SensorDef(
+        key="current_l2",
+        name="Grid Current L2",
+        unit="A",
+        device_class="current",
+        state_class="measurement",
+        entity_category="diagnostic",
+    ),
+    SensorDef(
+        key="current_l3",
+        name="Grid Current L3",
+        unit="A",
+        device_class="current",
+        state_class="measurement",
+        entity_category="diagnostic",
+    ),
+    SensorDef(
+        key="inverter_temperature",
+        name="Inverter Temperature",
+        unit="°C",
+        device_class="temperature",
+        state_class="measurement",
+        entity_category="diagnostic",
+    ),
+    SensorDef(
+        key="frequency",
+        name="Grid Frequency",
+        unit="Hz",
+        device_class="frequency",
+        state_class="measurement",
+        entity_category="diagnostic",
+    ),
+    SensorDef(
+        key="pv1_voltage",
+        name="PV String 1 Voltage",
+        unit="V",
+        device_class="voltage",
+        state_class="measurement",
+        entity_category="diagnostic",
+    ),
+    SensorDef(
+        key="pv2_voltage",
+        name="PV String 2 Voltage",
+        unit="V",
+        device_class="voltage",
+        state_class="measurement",
+        entity_category="diagnostic",
+    ),
+    SensorDef(
+        key="pv3_voltage",
+        name="PV String 3 Voltage",
+        unit="V",
+        device_class="voltage",
+        state_class="measurement",
+        entity_category="diagnostic",
+    ),
+    SensorDef(
+        key="pv1_current",
+        name="PV String 1 Current",
+        unit="A",
+        device_class="current",
+        state_class="measurement",
+        entity_category="diagnostic",
+    ),
+    SensorDef(
+        key="pv2_current",
+        name="PV String 2 Current",
+        unit="A",
+        device_class="current",
+        state_class="measurement",
+        entity_category="diagnostic",
+    ),
+    SensorDef(
+        key="pv3_current",
+        name="PV String 3 Current",
+        unit="A",
+        device_class="current",
+        state_class="measurement",
+        entity_category="diagnostic",
+    ),
+    SensorDef(
+        key="battery_count",
+        name="Battery Module Count",
+        unit=None,
+        device_class=None,
+        state_class="measurement",
+        entity_category="diagnostic",
+    ),
+    SensorDef(
+        key="soc_battery_1",
+        name="SOC Battery 1",
+        unit="%",
+        device_class="battery",
+        state_class="measurement",
+        entity_category="diagnostic",
+    ),
+    SensorDef(
+        key="soc_battery_2",
+        name="SOC Battery 2",
+        unit="%",
+        device_class="battery",
+        state_class="measurement",
+        entity_category="diagnostic",
+    ),
+    SensorDef(
+        key="soc_battery_3",
+        name="SOC Battery 3",
+        unit="%",
+        device_class="battery",
+        state_class="measurement",
+        entity_category="diagnostic",
+    ),
+]
+
+
+ENERGY_SENSOR_MAP: list[EnergySensorDef] = [
+    EnergySensorDef(
+        "grid_import_total",
+        "Grid Import Total",
+        max_power=MAX_GRID_POWER,
+    ),
+    EnergySensorDef(
+        "grid_import_today",
+        "Grid Import Today",
+        reset_at_midnight=True,
+        max_power=MAX_GRID_POWER,
+    ),
+    EnergySensorDef("grid_export_total", "Grid Export Total", max_power=MAX_GRID_POWER),
+    EnergySensorDef(
+        "grid_export_today",
+        "Grid Export Today",
+        reset_at_midnight=True,
+        max_power=MAX_GRID_POWER,
+    ),
+    EnergySensorDef(
+        "bat_charged_total",
+        "Battery Charged Total",
+        max_power=MAX_BATTERY_CHARGED_POWER,
+    ),
+    EnergySensorDef(
+        "bat_charged_today",
+        "Battery Charged Today",
+        reset_at_midnight=True,
+        max_power=MAX_BATTERY_CHARGED_POWER,
+    ),
+    EnergySensorDef(
+        "bat_discharged_total",
+        "Battery Discharged Total",
+        max_power=MAX_BATTERY_DISCHARGED_POWER,
+    ),
+    EnergySensorDef(
+        "bat_discharged_today",
+        "Battery Discharged Today",
+        reset_at_midnight=True,
+        max_power=MAX_BATTERY_DISCHARGED_POWER,
+    ),
+    EnergySensorDef("solar_total", "Solar Yield Total", max_power=MAX_SOLAR_POWER),
+    EnergySensorDef(
+        "solar_today",
+        "Solar Yield Today",
+        reset_at_midnight=True,
+        max_power=MAX_SOLAR_POWER,
+    ),
+    EnergySensorDef(
+        "house_energy_today",
+        "House Consumption Today",
+        reset_at_midnight=True,
+        max_power=MAX_GRID_POWER,
+    ),
+    EnergySensorDef(
+        "house_energy_total",
+        "House Consumption Total",
+        max_power=MAX_GRID_POWER,
+    ),
+    # EnergySensorDef(
+    #     "bat_net_energy",
+    #     "Battery Net Energy",
+    #     reset_at_midnight=True,
+    #     max_power=MAX_GRID_POWER,
+    # ),
+]

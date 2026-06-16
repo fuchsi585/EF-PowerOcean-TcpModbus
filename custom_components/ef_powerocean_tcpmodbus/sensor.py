@@ -26,8 +26,16 @@ from homeassistant.helpers.entity import DeviceInfo, EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import DOMAIN, MOD_REGISTER_MAP
+from .const import (
+    DOMAIN,
+    MOD_REGISTER_MAP,
+    EnergySensorDef,
+    ENERGY_SENSOR_MAP,
+    SENSOR_MAP,
+)
 from .coordinator import EcoflowCoordinator
+from datetime import datetime
+from homeassistant.util import dt
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -48,14 +56,6 @@ VALUE_PRECISION = {
 }
 
 SENSORS: list[EcoflowSensorDescription] = [
-    # ── Battery ──────────────────────────────────────────────────────────────
-    # EcoflowSensorDescription(
-    #     key="battery_soc",
-    #     name="Battery SOC",
-    #     native_unit_of_measurement=PERCENTAGE,
-    #     device_class=SensorDeviceClass.BATTERY,
-    #     state_class=SensorStateClass.MEASUREMENT,
-    # ),
     EcoflowSensorDescription(
         key="bat_remaining",
         name="Battery Remaining Energy",
@@ -92,22 +92,7 @@ SENSORS: list[EcoflowSensorDescription] = [
         device_class=SensorDeviceClass.POWER,
         state_class=SensorStateClass.MEASUREMENT,
     ),
-    # ── Energy – Today ────────────────────────────────────────────────────────
-    EcoflowSensorDescription(
-        key="house_energy_today",
-        name="House Consumption Today",
-        native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
-        device_class=SensorDeviceClass.ENERGY,
-        state_class=SensorStateClass.TOTAL_INCREASING,
-    ),
     # ── Energy – Lifetime ─────────────────────────────────────────────────────
-    EcoflowSensorDescription(
-        key="house_energy_total",
-        name="House Consumption Total",
-        native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
-        device_class=SensorDeviceClass.ENERGY,
-        state_class=SensorStateClass.TOTAL_INCREASING,
-    ),
     EcoflowSensorDescription(
         key="bat_net_energy",
         name="Battery Net Energy",
@@ -129,19 +114,22 @@ async def async_setup_entry(
         EcoflowSensor(coordinator, description, entry) for description in SENSORS
     )
 
-    for blocks in MOD_REGISTER_MAP["blocks"]:
-        for register in blocks.content:
-            description = EcoflowSensorDescription(
-                key=register.key,
-                name=register.name,
-                native_unit_of_measurement=register.unit,
-                device_class=register.device_class,
-                state_class=register.state_class,
-            )
-            if register.entity_category == "diagnostic":
-                description.entity_category = EntityCategory.DIAGNOSTIC
+    for sensor in SENSOR_MAP:
+        description = EcoflowSensorDescription(
+            key=sensor.key,
+            name=sensor.name,
+            native_unit_of_measurement=sensor.unit,
+            device_class=sensor.device_class,
+            state_class=sensor.state_class,
+        )
+        if sensor.entity_category == "diagnostic":
+            description.entity_category = EntityCategory.DIAGNOSTIC
 
-            entities.append(EcoflowSensor(coordinator, description, entry))
+        entities.append(EcoflowSensor(coordinator, description, entry))
+
+    for sensor in ENERGY_SENSOR_MAP:
+        entities.append(EcoflowEnergySensor(coordinator, sensor, entry))
+
     async_add_entities(entities)
 
 
@@ -205,3 +193,89 @@ class EcoflowSensor(CoordinatorEntity[EcoflowCoordinator], RestoreSensor):
                 else:
                     return value
         return self._last_written_value
+
+
+class EcoflowEnergySensor(CoordinatorEntity[EcoflowCoordinator], RestoreSensor):
+    _attr_device_class = SensorDeviceClass.ENERGY
+    _attr_state_class = SensorStateClass.TOTAL_INCREASING
+    _attr_native_unit_of_measurement = "kWh"
+    _attr_has_entity_name = True
+
+    def __init__(
+        self,
+        coordinator: EcoflowCoordinator,
+        definition: EnergySensorDef,
+        entry,
+    ) -> None:
+        super().__init__(coordinator)
+        self.sensor_definition: EnergySensorDef = definition
+        self.name = self.sensor_definition.name
+        self._attr_unique_id = f"{entry.entry_id}_{definition.key}"
+        self._state = None  # Total kWh
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, entry.entry_id)},
+            name="EcoFlow PowerOcean",
+            manufacturer="EcoFlow",
+            model="PowerOcean",
+            serial_number=coordinator.serial_number,
+        )
+
+        self._restored_value: float | int | str | None = None
+        self._last_written_value: float | int | str | None = None
+        self._attr_suggested_display_precision = VALUE_PRECISION.get(
+            self._attr_native_unit_of_measurement
+        )
+        self._last_updated: datetime = None
+
+    async def async_added_to_hass(self) -> None:
+        """Wird aufgerufen, wenn die Entität hinzugefügt wird."""
+        await super().async_added_to_hass()
+
+        # Den letzten Status aus der Datenbank laden
+        if (last_sensor_data := await self.async_get_last_sensor_data()) is not None:
+            self._state = last_sensor_data.native_value
+
+        # Erst jetzt den Zeitstempel setzen, damit die Berechnung ab hier startet
+        self._last_updated = dt.utcnow()
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        """Wird aufgerufen, wenn der Coordinator neue Daten hat."""
+
+        current_energy = self.coordinator.data.get(self.sensor_definition.key, None)
+        now = dt.utcnow()
+
+        if self._last_updated is not None and self._state is not None:
+            dt_hours = (now - self._last_updated).total_seconds() / 3600
+
+            if dt_hours > 0:
+                energy_delta = current_energy - self._state
+
+                if (
+                    current_energy == 0
+                    and self._state > 0
+                    and not self.sensor_definition.reset_at_midnight
+                ):
+                    _LOGGER.warning(f"Modbus lieferte 0 kWh")
+                    return
+
+                # Steigung berechnen
+                calculated_power = abs(energy_delta / dt_hours)
+                if calculated_power > self.sensor_definition.max_power:
+                    _LOGGER.warning(
+                        f"Spike blockiert für Sensor {self.sensor_definition.key}! Errechnte Leistung: {round(calculated_power, 2)} kW (Limit: {self.sensor_definition.max_power}). Delta: {round(energy_delta, 4)}"
+                    )
+                    return
+
+        self._state = current_energy
+        self._last_updated = now
+        self.async_write_ha_state()
+
+    @property
+    def native_value(self):
+        # Sicherstellen, dass wir nicht None zurückgeben, wenn der State noch lädt
+        return (
+            round(self._state, self._attr_suggested_display_precision)
+            if self._state is not None
+            else 0.0
+        )
