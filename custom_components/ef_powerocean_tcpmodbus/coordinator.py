@@ -201,9 +201,6 @@ class EcoflowCoordinator(DataUpdateCoordinator):
                 raw = await self.async_read_block(
                     register_block.start_register, register_block.num_read_regs
                 )
-                _LOGGER.debug(
-                    f"raw-data of {register_block.start_register}-{register_block.start_register + register_block.num_read_regs}: {raw}"
-                )
                 for register in register_block.content:
                     decode_value = self._decode_register(
                         raw, register.block_index, register.size

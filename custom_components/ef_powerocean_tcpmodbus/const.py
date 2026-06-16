@@ -400,24 +400,24 @@ ENERGY_SENSOR_MAP: list[EnergySensorDef] = [
     EnergySensorDef(
         "bat_charged_total",
         "Battery Charged Total",
-        max_power=MAX_BATTERY_CHARGED_POWER,
+        max_power=MAX_BATTERY_CHARGED_POWER * DEFAULT_BATTERY_COUNT,
     ),
     EnergySensorDef(
         "bat_charged_today",
         "Battery Charged Today",
         reset_at_midnight=True,
-        max_power=MAX_BATTERY_CHARGED_POWER,
+        max_power=MAX_BATTERY_CHARGED_POWER * DEFAULT_BATTERY_COUNT,
     ),
     EnergySensorDef(
         "bat_discharged_total",
         "Battery Discharged Total",
-        max_power=MAX_BATTERY_DISCHARGED_POWER,
+        max_power=MAX_BATTERY_DISCHARGED_POWER * DEFAULT_BATTERY_COUNT,
     ),
     EnergySensorDef(
         "bat_discharged_today",
         "Battery Discharged Today",
         reset_at_midnight=True,
-        max_power=MAX_BATTERY_DISCHARGED_POWER,
+        max_power=MAX_BATTERY_DISCHARGED_POWER * DEFAULT_BATTERY_COUNT,
     ),
     EnergySensorDef("solar_total", "Solar Yield Total", max_power=MAX_SOLAR_POWER),
     EnergySensorDef(
@@ -430,12 +430,10 @@ ENERGY_SENSOR_MAP: list[EnergySensorDef] = [
         "house_energy_today",
         "House Consumption Today",
         reset_at_midnight=True,
-        max_power=MAX_GRID_POWER,
     ),
     EnergySensorDef(
         "house_energy_total",
         "House Consumption Total",
-        max_power=MAX_GRID_POWER,
     ),
     # EnergySensorDef(
     #     "bat_net_energy",

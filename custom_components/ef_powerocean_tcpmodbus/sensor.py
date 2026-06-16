@@ -28,13 +28,12 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import (
     DOMAIN,
-    MOD_REGISTER_MAP,
     EnergySensorDef,
     ENERGY_SENSOR_MAP,
     SENSOR_MAP,
 )
 from .coordinator import EcoflowCoordinator
-from datetime import datetime
+from datetime import datetime, time
 from homeassistant.util import dt
 
 _LOGGER = logging.getLogger(__name__)
@@ -244,11 +243,26 @@ class EcoflowEnergySensor(CoordinatorEntity[EcoflowCoordinator], RestoreSensor):
 
         current_energy = self.coordinator.data.get(self.sensor_definition.key, None)
         now = dt.utcnow()
+        if (
+            self.sensor_definition.reset_at_midnight
+            and time(0, 0) <= now.time() <= time(0, 1)
+            and current_energy == 0
+        ):
+            self._state = 0
+            self._last_updated = now
+            self.async_write_ha_state()
+            _LOGGER.info(f"Reset bei 00:00 Uhr für {self.sensor_definition.key}")
+            return
 
-        if self._last_updated is not None and self._state is not None:
+        elif (
+            self.sensor_definition.max_power is not None
+            and self._last_updated is not None
+            and self._state is not None
+        ):
             dt_hours = (now - self._last_updated).total_seconds() / 3600
 
-            if dt_hours > 0:
+            # Nur innerhalb einer 1h Stunde prüfen, danach ist das Gap zu groß
+            if 0 < dt_hours < 1:
                 energy_delta = current_energy - self._state
 
                 if (
