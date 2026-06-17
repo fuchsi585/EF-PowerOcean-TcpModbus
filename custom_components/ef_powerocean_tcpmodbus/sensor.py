@@ -261,8 +261,7 @@ class EcoflowEnergySensor(CoordinatorEntity[EcoflowCoordinator], RestoreSensor):
         now = dt.now()
         if (now - self._last_updated).total_seconds() < 1:
             return self._last_written_value
-
-        if (
+        elif (
             self.sensor_definition.reset_at_midnight
             and current_energy == 0
             and now.hour == 0
@@ -272,7 +271,9 @@ class EcoflowEnergySensor(CoordinatorEntity[EcoflowCoordinator], RestoreSensor):
             _LOGGER.info(f"Reset bei {now.time()} Uhr für {self.sensor_definition.key}")
             self._last_updated = now
             return 0
-
+        elif current_energy <= self._last_written_value:
+            # Fix Warning: state is not strictly increasing
+            return self._last_written_value
         elif (
             self.sensor_definition.max_power is not None
             and self._last_updated is not None
