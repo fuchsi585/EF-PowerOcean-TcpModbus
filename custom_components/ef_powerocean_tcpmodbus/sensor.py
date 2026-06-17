@@ -259,6 +259,9 @@ class EcoflowEnergySensor(CoordinatorEntity[EcoflowCoordinator], RestoreSensor):
             return self._last_written_value
 
         now = dt.now()
+        if (now - self._last_updated).total_seconds() < 1:
+            return self._last_written_value
+
         if (
             self.sensor_definition.reset_at_midnight
             and current_energy == 0
@@ -282,7 +285,7 @@ class EcoflowEnergySensor(CoordinatorEntity[EcoflowCoordinator], RestoreSensor):
                 calculated_power = abs(energy_delta / dt_hours)
                 if calculated_power > self.sensor_definition.max_power:
                     _LOGGER.warning(
-                        f"Rohwert blockiert für Sensor {self.sensor_definition.key}! (Rohwert: {int(current_energy)} Leistung: {round(calculated_power, 0)} W (Limit: {self.sensor_definition.max_power}) Delta: {round(energy_delta, 4)}"
+                        f"Rohwert blockiert für Sensor {self.sensor_definition.key}! (Rohwert: {current_energy} Last-Rohwert: {self._last_written_value} dt: {dt_hours} Leistung: {int(calculated_power)} Limit: {self.sensor_definition.max_power} Delta: {round(energy_delta, 4)} Now: {now} Last-Updated: {self._last_updated})"
                     )
                     return self._last_written_value
 
