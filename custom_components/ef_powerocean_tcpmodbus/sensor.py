@@ -33,7 +33,7 @@ from .const import (
     SENSOR_MAP,
 )
 from .coordinator import EcoflowCoordinator
-from datetime import datetime, time
+from datetime import datetime
 from homeassistant.util import dt
 
 _LOGGER = logging.getLogger(__name__)
@@ -210,7 +210,6 @@ class EcoflowEnergySensor(CoordinatorEntity[EcoflowCoordinator], RestoreSensor):
         self.sensor_definition: EnergySensorDef = definition
         self.name = self.sensor_definition.name
         self._attr_unique_id = f"{entry.entry_id}_{definition.key}"
-        self._state = None  # Total kWh
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, entry.entry_id)},
             name="EcoFlow PowerOcean",
@@ -229,67 +228,63 @@ class EcoflowEnergySensor(CoordinatorEntity[EcoflowCoordinator], RestoreSensor):
     async def async_added_to_hass(self) -> None:
         """Wird aufgerufen, wenn die Entität hinzugefügt wird."""
         await super().async_added_to_hass()
-
         # Den letzten Status aus der Datenbank laden
-        if (last_sensor_data := await self.async_get_last_sensor_data()) is not None:
-            self._state = last_sensor_data.native_value
+        if (
+            last_value := await self.async_get_last_sensor_data()
+        ) and last_value.native_value is not None:
+            _LOGGER.debug(
+                f"Restore Sensor '{self.sensor_definition.name}' with value: {last_value.native_value}"
+            )
+            self._restored_value = last_value.native_value
+            self._last_written_value = last_value.native_value
 
         # Erst jetzt den Zeitstempel setzen, damit die Berechnung ab hier startet
-        self._last_updated = dt.utcnow()
+        self._last_updated = dt.now()
 
     @callback
     def _handle_coordinator_update(self) -> None:
-        """Wird aufgerufen, wenn der Coordinator neue Daten hat."""
+        """Handle updated data from the coordinator."""
+        new_value = self.native_value
+        if new_value != self._last_written_value:
+            self._last_written_value = new_value
+            self.async_write_ha_state()
+
+    @property
+    def native_value(self) -> float | int | None:
+        if self.coordinator.data is None:
+            return self._last_written_value
 
         current_energy = self.coordinator.data.get(self.sensor_definition.key, None)
-        now = dt.utcnow()
+        if current_energy is None:
+            return self._last_written_value
+
+        now = dt.now()
         if (
             self.sensor_definition.reset_at_midnight
-            and time(0, 0) <= now.time() <= time(0, 1)
             and current_energy == 0
+            and now.hour == 0
+            and now.minute < 1
         ):
-            self._state = 0
+            # Reset nur zwischen 00:00 und 00:01 erlauben
+            _LOGGER.info(f"Reset bei {now.time()} Uhr für {self.sensor_definition.key}")
             self._last_updated = now
-            self.async_write_ha_state()
-            _LOGGER.info(f"Reset bei 00:00 Uhr für {self.sensor_definition.key}")
-            return
+            return 0
 
         elif (
             self.sensor_definition.max_power is not None
             and self._last_updated is not None
-            and self._state is not None
         ):
             dt_hours = (now - self._last_updated).total_seconds() / 3600
-
             # Nur innerhalb einer 1h Stunde prüfen, danach ist das Gap zu groß
             if 0 < dt_hours < 1:
-                energy_delta = current_energy - self._state
-
-                if (
-                    current_energy == 0
-                    and self._state > 0
-                    and not self.sensor_definition.reset_at_midnight
-                ):
-                    _LOGGER.warning(f"Modbus lieferte 0 kWh")
-                    return
-
                 # Steigung berechnen
+                energy_delta = current_energy - self._last_written_value
                 calculated_power = abs(energy_delta / dt_hours)
                 if calculated_power > self.sensor_definition.max_power:
                     _LOGGER.warning(
-                        f"Spike blockiert für Sensor {self.sensor_definition.key}! Errechnte Leistung: {round(calculated_power, 2)} kW (Limit: {self.sensor_definition.max_power}). Delta: {round(energy_delta, 4)}"
+                        f"Rohwert blockiert für Sensor {self.sensor_definition.key}! (Rohwert: {int(current_energy)} Leistung: {round(calculated_power, 0)} W (Limit: {self.sensor_definition.max_power}) Delta: {round(energy_delta, 4)}"
                     )
-                    return
+                    return self._last_written_value
 
-        self._state = current_energy
         self._last_updated = now
-        self.async_write_ha_state()
-
-    @property
-    def native_value(self):
-        # Sicherstellen, dass wir nicht None zurückgeben, wenn der State noch lädt
-        return (
-            round(self._state, self._attr_suggested_display_precision)
-            if self._state is not None
-            else 0.0
-        )
+        return current_energy
