@@ -85,7 +85,7 @@ MOD_REGISTER_MAP = {
                 RegisterDef(key="limit_inv_max", block_index=29, size=1),
                 RegisterDef(key="battery_voltage", block_index=55),
                 RegisterDef(key="battery_current", block_index=57),
-                RegisterDef(key="Battery Temperature", block_index=59),
+                RegisterDef(key="battery_temperature", block_index=59),
                 RegisterDef(key="voltage_l1", block_index=61),
                 RegisterDef(key="voltage_l2", block_index=63),
                 RegisterDef(key="voltage_l3", block_index=65),
