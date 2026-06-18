@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+from typing import Any
 from dataclasses import dataclass
+from collections.abc import Callable
 
 DOMAIN = "ef_powerocean_tcpmodbus"
 DEFAULT_PORT = 502
@@ -15,9 +17,8 @@ CONF_SCAN_INTERVAL = "scan_interval"
 CONF_PV_STRINGS = "pv_strings"
 
 DEFAULT_PV_STRINGS = 2
-PV_CURRENT_THRESHOLD = (
-    0.05  # A – below this value string current is treated as 0 (phantom voltage)
-)
+# A – below this value string current is treated as 0 (phantom voltage)
+PV_CURRENT_THRESHOLD = 0.07
 
 # Used in config_flow connection test only
 REG_STATUS = 42081  # UINT16 – 1 = Online
@@ -49,6 +50,8 @@ class SensorDef:
     device_class: str | None = None
     state_class: str | None = None
     entity_category: str | None = None
+    get_checked_value: Callable[..., Any] | None = None
+    function_arg: Any | None = None
 
 
 @dataclass(frozen=True)
@@ -132,6 +135,11 @@ MAX_GRID_POWER = 30000  # Vorgabe über conf
 MAX_BATTERY_CHARGED_POWER = 2500
 MAX_BATTERY_DISCHARGED_POWER = 3300
 
+
+def set_to_zero_below_threshold(value, threshold):
+    return 0 if value < threshold else value
+
+
 SENSOR_MAP: list[SensorDef] = [
     SensorDef(
         key="house_power",
@@ -153,6 +161,8 @@ SENSOR_MAP: list[SensorDef] = [
         unit="W",
         device_class="power",
         state_class="measurement",
+        get_checked_value=max,
+        function_arg=0,
     ),
     SensorDef(
         key="battery_power",
@@ -326,6 +336,8 @@ SENSOR_MAP: list[SensorDef] = [
         device_class="current",
         state_class="measurement",
         entity_category="diagnostic",
+        get_checked_value=set_to_zero_below_threshold,
+        function_arg=PV_CURRENT_THRESHOLD,
     ),
     SensorDef(
         key="pv2_current",
@@ -334,6 +346,8 @@ SENSOR_MAP: list[SensorDef] = [
         device_class="current",
         state_class="measurement",
         entity_category="diagnostic",
+        get_checked_value=set_to_zero_below_threshold,
+        function_arg=PV_CURRENT_THRESHOLD,
     ),
     SensorDef(
         key="pv3_current",
@@ -342,6 +356,8 @@ SENSOR_MAP: list[SensorDef] = [
         device_class="current",
         state_class="measurement",
         entity_category="diagnostic",
+        get_checked_value=set_to_zero_below_threshold,
+        function_arg=PV_CURRENT_THRESHOLD,
     ),
     SensorDef(
         key="battery_count",

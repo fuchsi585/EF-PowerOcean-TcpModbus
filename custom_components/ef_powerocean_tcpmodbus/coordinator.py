@@ -205,7 +205,6 @@ class EcoflowCoordinator(DataUpdateCoordinator):
                     decode_value = self._decode_register(
                         raw, register.block_index, register.size
                     )
-                    # TODO min/max
                     data[register.key] = decode_value
 
             if data["battery_count"] != DEFAULT_BATTERY_COUNT:

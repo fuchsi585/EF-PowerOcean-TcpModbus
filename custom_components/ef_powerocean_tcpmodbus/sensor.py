@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import logging
+from typing import Any
 from dataclasses import dataclass
+from collections.abc import Callable
 
 from homeassistant.components.sensor import (
     SensorDeviceClass,
@@ -28,6 +30,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import (
     DOMAIN,
+    SensorDef,
     EnergySensorDef,
     ENERGY_SENSOR_MAP,
     SENSOR_MAP,
@@ -39,9 +42,12 @@ from homeassistant.util import dt
 _LOGGER = logging.getLogger(__name__)
 
 
+# ist doppelt
 @dataclass(frozen=False)
 class EcoflowSensorDescription(SensorEntityDescription):
     native_unit_of_measurement: str | None = None
+    get_checked_value: Callable[..., Any] | None = None
+    function_arg: Any | None = None
 
 
 VALUE_PRECISION = {
@@ -110,7 +116,8 @@ async def async_setup_entry(
     coordinator: EcoflowCoordinator = hass.data[DOMAIN][entry.entry_id]
     entities: list = []
     async_add_entities(
-        EcoflowSensor(coordinator, description, entry) for description in SENSORS
+        EcoflowSensor(coordinator, description, entry, description)
+        for description in SENSORS
     )
 
     for sensor in SENSOR_MAP:
@@ -124,7 +131,7 @@ async def async_setup_entry(
         if sensor.entity_category == "diagnostic":
             description.entity_category = EntityCategory.DIAGNOSTIC
 
-        entities.append(EcoflowSensor(coordinator, description, entry))
+        entities.append(EcoflowSensor(coordinator, description, entry, sensor))
 
     for sensor in ENERGY_SENSOR_MAP:
         entities.append(EcoflowEnergySensor(coordinator, sensor, entry))
@@ -135,9 +142,10 @@ async def async_setup_entry(
 class EcoflowSensor(CoordinatorEntity[EcoflowCoordinator], RestoreSensor):
     entity_description: EcoflowSensorDescription
 
-    def __init__(self, coordinator, description, entry) -> None:
+    def __init__(self, coordinator, description, entry, sensor_definition) -> None:
         super().__init__(coordinator)
         self.entity_description: EcoflowSensorDescription = description
+        self.sensor_definition: SensorDef = sensor_definition
         self._attr_unique_id = f"{entry.entry_id}_{description.key}"
         self._attr_has_entity_name = True
         self._attr_device_info = DeviceInfo(
@@ -181,6 +189,12 @@ class EcoflowSensor(CoordinatorEntity[EcoflowCoordinator], RestoreSensor):
         if self.coordinator.data is not None:
             value = self.coordinator.data.get(self.entity_description.key, None)
             if value is not None:
+                if self.sensor_definition.get_checked_value is not None:
+                    if self.sensor_definition.function_arg:
+                        value = self.sensor_definition.get_checked_value(
+                            value, self.sensor_definition.function_arg
+                        )
+
                 if precision := VALUE_PRECISION.get(
                     self.entity_description.native_unit_of_measurement, None
                 ):
@@ -223,7 +237,7 @@ class EcoflowEnergySensor(CoordinatorEntity[EcoflowCoordinator], RestoreSensor):
         self._attr_suggested_display_precision = VALUE_PRECISION.get(
             self._attr_native_unit_of_measurement
         )
-        self._last_updated: datetime = None
+        self._last_checked_time: datetime = None
 
     async def async_added_to_hass(self) -> None:
         """Wird aufgerufen, wenn die Entität hinzugefügt wird."""
@@ -232,14 +246,11 @@ class EcoflowEnergySensor(CoordinatorEntity[EcoflowCoordinator], RestoreSensor):
         if (
             last_value := await self.async_get_last_sensor_data()
         ) and last_value.native_value is not None:
-            _LOGGER.debug(
+            _LOGGER.info(
                 f"Restore Sensor '{self.sensor_definition.name}' with value: {last_value.native_value}"
             )
             self._restored_value = last_value.native_value
             self._last_written_value = last_value.native_value
-
-        # Erst jetzt den Zeitstempel setzen, damit die Berechnung ab hier startet
-        self._last_updated = dt.now()
 
     @callback
     def _handle_coordinator_update(self) -> None:
@@ -248,6 +259,8 @@ class EcoflowEnergySensor(CoordinatorEntity[EcoflowCoordinator], RestoreSensor):
         if new_value != self._last_written_value:
             self._last_written_value = new_value
             self.async_write_ha_state()
+
+        self._last_checked_time = dt.now()
 
     @property
     def native_value(self) -> float | int | None:
@@ -259,26 +272,28 @@ class EcoflowEnergySensor(CoordinatorEntity[EcoflowCoordinator], RestoreSensor):
             return self._last_written_value
 
         now = dt.now()
-        if (now - self._last_updated).total_seconds() < 1:
+        if self._last_checked_time is None:
+            return current_energy
+        elif (now - self._last_checked_time).total_seconds() < 1:
             return self._last_written_value
         elif (
             self.sensor_definition.reset_at_midnight
             and current_energy == 0
+            and self._last_written_value > 0
             and now.hour == 0
             and now.minute < 1
         ):
             # Reset nur zwischen 00:00 und 00:01 erlauben
             _LOGGER.info(f"Reset bei {now.time()} Uhr für {self.sensor_definition.key}")
-            self._last_updated = now
             return 0
-        elif current_energy <= self._last_written_value:
-            # Fix Warning: state is not strictly increasing
-            return self._last_written_value
+        # elif current_energy <= self._last_written_value:
+        #     # Fix Warning: state is not strictly increasing
+        #     return self._last_written_value
         elif (
             self.sensor_definition.max_power is not None
-            and self._last_updated is not None
+            and self._last_checked_time is not None
         ):
-            dt_hours = (now - self._last_updated).total_seconds() / 3600
+            dt_hours = (now - self._last_checked_time).total_seconds() / 3600
             # Nur innerhalb einer 1h Stunde prüfen, danach ist das Gap zu groß
             if 0 < dt_hours < 1:
                 # Steigung berechnen
@@ -286,9 +301,8 @@ class EcoflowEnergySensor(CoordinatorEntity[EcoflowCoordinator], RestoreSensor):
                 calculated_power = abs(energy_delta / dt_hours)
                 if calculated_power > self.sensor_definition.max_power:
                     _LOGGER.warning(
-                        f"Rohwert blockiert für Sensor {self.sensor_definition.key}! (Rohwert: {current_energy} Last-Rohwert: {self._last_written_value} dt: {dt_hours} Leistung: {int(calculated_power)} Limit: {self.sensor_definition.max_power} Delta: {round(energy_delta, 4)} Now: {now} Last-Updated: {self._last_updated})"
+                        f"Rohwert blockiert für Sensor {self.sensor_definition.key}! (Rohwert: {current_energy} Last-Rohwert: {self._last_written_value} dt: {dt_hours} Leistung: {int(calculated_power)} Limit: {self.sensor_definition.max_power} Delta: {round(energy_delta, 4)} Now: {now} Last-Updated: {self._last_checked_time})"
                     )
                     return self._last_written_value
 
-        self._last_updated = now
         return current_energy
