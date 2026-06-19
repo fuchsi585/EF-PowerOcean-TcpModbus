@@ -172,13 +172,13 @@ class EcoflowCoordinator(DataUpdateCoordinator):
             + data.get("bat_discharged_total", 0),
             0,
         )
-        calc_data["pv1_power"] = round(
+        calc_data["pv1_power"] = 0 if data["pv1_current"] < PV_CURRENT_THRESHOLD else round(
             data["pv1_current"] * (data["pv1_voltage"] or 0.0), 1
         )
-        calc_data["pv2_power"] = round(
+        calc_data["pv2_power"] = 0 if data["pv2_current"] < PV_CURRENT_THRESHOLD else round(
             data["pv2_current"] * (data["pv2_voltage"] or 0.0), 1
         )
-        calc_data["pv3_power"] = round(
+        calc_data["pv3_power"] = 0 if data["pv3_current"] < PV_CURRENT_THRESHOLD else round(
             data["pv3_current"] * (data["pv3_voltage"] or 0.0), 1
         )
 
