@@ -18,7 +18,7 @@ CONF_PV_STRINGS = "pv_strings"
 
 DEFAULT_PV_STRINGS = 2
 # A – below this value string current is treated as 0 (phantom voltage)
-PV_CURRENT_THRESHOLD = 0.07
+PV_CURRENT_THRESHOLD = 0.06
 
 # Used in config_flow connection test only
 REG_STATUS = 42081  # UINT16 – 1 = Online
@@ -406,7 +406,11 @@ ENERGY_SENSOR_MAP: list[EnergySensorDef] = [
         reset_at_midnight=True,
         max_power=MAX_GRID_POWER,
     ),
-    EnergySensorDef("grid_export_total", "Grid Export Total", max_power=MAX_GRID_POWER),
+    EnergySensorDef(
+        "grid_export_total", 
+        "Grid Export Total", 
+        max_power=MAX_GRID_POWER
+    ),
     EnergySensorDef(
         "grid_export_today",
         "Grid Export Today",
@@ -446,10 +450,12 @@ ENERGY_SENSOR_MAP: list[EnergySensorDef] = [
         "house_energy_today",
         "House Consumption Today",
         reset_at_midnight=True,
+        max_power=MAX_GRID_POWER,
     ),
     EnergySensorDef(
         "house_energy_total",
         "House Consumption Total",
+        max_power=MAX_GRID_POWER,
     ),
     # EnergySensorDef(
     #     "bat_net_energy",
