@@ -279,7 +279,7 @@ class EcoflowEnergySensor(CoordinatorEntity[EcoflowCoordinator], RestoreSensor):
             _LOGGER.info(f"Last checked time is None. Return {current_energy} at {now.time()} für Sensor {self.sensor_definition.key}")
             return current_energy
         elif (now - self._last_checked_time).total_seconds() < 1:
-            _LOGGER.info(f"dt is less then one secend. Return {self._last_written_value} at {now.time()} für Sensor {self.sensor_definition.key}")
+            _LOGGER.debug(f"dt is less then one secend. Return {self._last_written_value} für Sensor {self.sensor_definition.key}. Delta-t: {(now - self._last_checked_time).total_seconds()}")
             return self._last_written_value
         elif (
             self.sensor_definition.reset_at_midnight
