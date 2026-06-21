@@ -50,21 +50,18 @@ class EcoflowCoordinator(DataUpdateCoordinator):
         )
         self.host = host
         self.port = port
+        self.serial_number: str | None = None
         self._battery_capacity = battery_capacity
         self._pv_strings = pv_strings
-        self.serial_number: str | None = None
         self._client: AsyncModbusTcpClient = AsyncModbusTcpClient(
-            self.host, port=self.port, timeout=5, reconnect_delay=0, retries=0
+            host=self.host, port=self.port, timeout=5, reconnect_delay=0, retries=0
         )
-        self._client.unit_id = DEFAULT_SLAVE
+        self._client_slave_id = DEFAULT_SLAVE
         self._lock = asyncio.Lock()
 
     def get_pymodbus_version(self) -> str:
         return pyModbusVersion
 
-    # ------------------------------------------------------------------
-    # Modbus helpers
-    # ------------------------------------------------------------------
     async def async_client_shutdown(self) -> None:
         """Integration-Shutdown, closing connection"""
         _LOGGER.info("PowerOcean Shutdown. Closing Connection!")
@@ -117,7 +114,9 @@ class EcoflowCoordinator(DataUpdateCoordinator):
     async def async_read_block(self, addr: int, count: int) -> list[int] | None:
         """Read *count* holding registers starting at *addr*.  Returns None on error."""
         async with self._lock:
-            res = await self._client.read_holding_registers(addr, count=count)
+            res = await self._client.read_holding_registers(
+                address=addr, count=count, device_id=self._client_slave_id
+            )
             if res.isError():
                 # Modbus error response – connection may be stale
                 raise ModbusException(
@@ -140,7 +139,7 @@ class EcoflowCoordinator(DataUpdateCoordinator):
         try:
             raw = struct.pack("<HH", regs[register_index], regs[register_index + 1])
             value = struct.unpack("<f", raw)[0]
-        except struct.error, TypeError:  # FIX: korrekte Python-3-Syntax
+        except (struct.error, TypeError):  # FIX: korrekte Python-3-Syntax
             return None
 
         if abs(value) > 1e9 or value != value:  # guard against NaN / inf
@@ -235,32 +234,8 @@ class EcoflowCoordinator(DataUpdateCoordinator):
             _LOGGER.error(f"Unexpected error during data fetch: {repr(err)}")
             return data
 
-            # # ── Block A: Serial number + operation mode (40004, 12 regs) ──────────
-            # if a := await self._read_block(_REG_SERIAL, 12):
-            #     # Serial number is ASCII-encoded across registers 0-7 (2 chars each)
-            #     sn = "".join(chr((r >> 8) & 0xFF) + chr(r & 0xFF) for r in a[0:8])
-            #     data["serial_number"] = sn.strip().replace("\x00", "")
             #     data["operation_mode"] = a[9] if len(a) > 9 else None
-
-            #     data["solar_power"] = max(self._f(b, 4), 0.0)  # 40523 ✅
-
-            #     # Apply threshold to filter phantom currents, zero out unconfigured strings
-            #     def _pv_current(raw: float, string_nr: int) -> float:
-            #         if string_nr > self._pv_strings:
-            #             return 0.0
-            #         return raw if raw >= PV_CURRENT_THRESHOLD else 0.0  # FIX: >= statt >
-
-            #     data["pv1_current"] = _pv_current(self._f(d, 22), 1)  # 40602 ✅
-            #     data["pv2_current"] = _pv_current(self._f(d, 24), 2)  # 40604 ✅
-            #     data["pv3_current"] = _pv_current(
-            #         self._f(d, 26), 3
-            #     )  # 40606 ⚠️ not in verified list
-
             #     # FIX: PV-Leistung pro String mit eigener Spannung berechnen
-            #     data["pv1_power"] = round(data["pv1_current"] * (data["pv1_voltage"] or 0.0), 1)
-            #     data["pv2_power"] = round(data["pv2_current"] * (data["pv2_voltage"] or 0.0), 1)
-            #     data["pv3_power"] = round(data["pv3_current"] * (data["pv3_voltage"] or 0.0), 1)
-
             #     # Solar power: sum of active strings only
             #     data["solar_power"] = round(
             #         sum(data[f"pv{i}_power"] for i in range(1, self._pv_strings + 1)), 1
