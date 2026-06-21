@@ -7,6 +7,7 @@ import logging
 import struct
 from datetime import timedelta
 
+from pymodbus import __version__ as pyModbusVersion
 from pymodbus.client import AsyncModbusTcpClient
 from pymodbus.exceptions import ModbusException
 
@@ -57,6 +58,9 @@ class EcoflowCoordinator(DataUpdateCoordinator):
         )
         self._client.unit_id = DEFAULT_SLAVE
         self._lock = asyncio.Lock()
+
+    def get_pymodbus_version(self) -> str:
+        return pyModbusVersion
 
     # ------------------------------------------------------------------
     # Modbus helpers
@@ -172,14 +176,20 @@ class EcoflowCoordinator(DataUpdateCoordinator):
             + data.get("bat_discharged_total", 0),
             0,
         )
-        calc_data["pv1_power"] = 0 if data["pv1_current"] < PV_CURRENT_THRESHOLD else round(
-            data["pv1_current"] * (data["pv1_voltage"] or 0.0), 1
+        calc_data["pv1_power"] = (
+            0
+            if data["pv1_current"] < PV_CURRENT_THRESHOLD
+            else round(data["pv1_current"] * (data["pv1_voltage"] or 0.0), 1)
         )
-        calc_data["pv2_power"] = 0 if data["pv2_current"] < PV_CURRENT_THRESHOLD else round(
-            data["pv2_current"] * (data["pv2_voltage"] or 0.0), 1
+        calc_data["pv2_power"] = (
+            0
+            if data["pv2_current"] < PV_CURRENT_THRESHOLD
+            else round(data["pv2_current"] * (data["pv2_voltage"] or 0.0), 1)
         )
-        calc_data["pv3_power"] = 0 if data["pv3_current"] < PV_CURRENT_THRESHOLD else round(
-            data["pv3_current"] * (data["pv3_voltage"] or 0.0), 1
+        calc_data["pv3_power"] = (
+            0
+            if data["pv3_current"] < PV_CURRENT_THRESHOLD
+            else round(data["pv3_current"] * (data["pv3_voltage"] or 0.0), 1)
         )
 
         return calc_data

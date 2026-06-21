@@ -24,8 +24,9 @@ from homeassistant.const import (
     UnitOfTemperature,
 )
 from homeassistant.core import HomeAssistant, callback
-from homeassistant.helpers.entity import DeviceInfo, EntityCategory
+from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.device_registry import DeviceInfo, DeviceEntryType
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import (
@@ -154,6 +155,8 @@ class EcoflowSensor(CoordinatorEntity[EcoflowCoordinator], RestoreSensor):
             manufacturer="EcoFlow",
             model="PowerOcean",
             serial_number=coordinator.serial_number,
+            sw_version=f"pymodbus: {coordinator.get_pymodbus_version()}",
+            entry_type=DeviceEntryType.SERVICE,
         )
         self._restored_value: float | int | str | None = None
         self._last_written_value: float | int | str | None = None
@@ -230,6 +233,8 @@ class EcoflowEnergySensor(CoordinatorEntity[EcoflowCoordinator], RestoreSensor):
             manufacturer="EcoFlow",
             model="PowerOcean",
             serial_number=coordinator.serial_number,
+            sw_version=f"pymodbus {coordinator.get_pymodbus_version()}",
+            entry_type=DeviceEntryType.SERVICE,
         )
 
         self._restored_value: float | int | str | None = None
@@ -251,7 +256,6 @@ class EcoflowEnergySensor(CoordinatorEntity[EcoflowCoordinator], RestoreSensor):
             )
             self._restored_value = last_value.native_value
             self._last_written_value = self._restored_value
-            
 
     @callback
     def _handle_coordinator_update(self) -> None:
@@ -262,24 +266,31 @@ class EcoflowEnergySensor(CoordinatorEntity[EcoflowCoordinator], RestoreSensor):
             self._last_written_value = new_value
             self.async_write_ha_state()
 
-
     @property
     def native_value(self) -> float | int | None:
         if self.coordinator.data is None:
-            _LOGGER.info(f"Coordinator-data is None. Return {self._last_written_value} at {dt.now().time()} für Sensor {self.sensor_definition.key}")
+            _LOGGER.info(
+                f"Coordinator-data is None. Return {self._last_written_value} at {dt.now().time()} für Sensor {self.sensor_definition.key}"
+            )
             return self._last_written_value
 
         now = dt.now()
         current_energy = self.coordinator.data.get(self.sensor_definition.key, None)
         if current_energy is None:
-            _LOGGER.info(f"Current_energy is None. Return {self._last_written_value} at {dt.now().time()} für Sensor {self.sensor_definition.key}")
+            _LOGGER.info(
+                f"Current_energy is None. Return {self._last_written_value} at {dt.now().time()} für Sensor {self.sensor_definition.key}"
+            )
             return self._last_written_value
 
         if self._last_checked_time is None:
-            _LOGGER.info(f"Last checked time is None. Return {current_energy} at {now.time()} für Sensor {self.sensor_definition.key}")
+            _LOGGER.info(
+                f"Last checked time is None. Return {current_energy} at {now.time()} für Sensor {self.sensor_definition.key}"
+            )
             return current_energy
         elif (now - self._last_checked_time).total_seconds() < 1:
-            _LOGGER.debug(f"dt is less then one secend. Return {self._last_written_value} für Sensor {self.sensor_definition.key}. Delta-t: {(now - self._last_checked_time).total_seconds()}")
+            _LOGGER.debug(
+                f"dt is less then one secend. Return {self._last_written_value} für Sensor {self.sensor_definition.key}. Delta-t: {(now - self._last_checked_time).total_seconds()}"
+            )
             return self._last_written_value
         elif (
             self.sensor_definition.reset_at_midnight
@@ -294,19 +305,22 @@ class EcoflowEnergySensor(CoordinatorEntity[EcoflowCoordinator], RestoreSensor):
         # elif current_energy <= self._last_written_value:
         #     # Fix Warning: state is not strictly increasing
         #     return self._last_written_value
-        #elif (
+        # elif (
         #    self.sensor_definition.max_power is not None
         #    and self._last_checked_time is not None
-        #):
+        # ):
         else:
             dt_hours = (now - self._last_checked_time).total_seconds() / 3600
             # Nur innerhalb einer 1h Stunde prüfen, danach ist das Gap zu groß
             if 0 < dt_hours <= 1:
                 # Steigung berechnen
-                #_LOGGER.info(f"Start check at {now.time()} with last data of {self._last_checked_time.time()}")
+                # _LOGGER.info(f"Start check at {now.time()} with last data of {self._last_checked_time.time()}")
                 energy_delta = current_energy - self._last_written_value
-                calculated_power = abs(energy_delta / dt_hours)
-                if calculated_power > self.sensor_definition.max_power:
+                calculated_power = energy_delta / dt_hours
+                if (
+                    calculated_power < 0
+                    or calculated_power > self.sensor_definition.max_power
+                ):
                     _LOGGER.warning(
                         f"Rohwert blockiert für Sensor {self.sensor_definition.key}! (Current-Energy: {current_energy} Last-Energy: {self._last_written_value} dt: {dt_hours} Leistung: {int(calculated_power)} Limit: {self.sensor_definition.max_power} Delta: {round(energy_delta, 4)} Now: {now.time()} Last-Check: {self._last_checked_time.time()})"
                     )
@@ -316,12 +330,16 @@ class EcoflowEnergySensor(CoordinatorEntity[EcoflowCoordinator], RestoreSensor):
                         _LOGGER.warning(
                             f"Rohwert 0 kWh für Sensor {self.sensor_definition.key}! (Current-Energy: {current_energy} Last-Energy: {self._last_written_value} dt: {dt_hours} Leistung: {int(calculated_power)} Limit: {self.sensor_definition.max_power} Delta: {round(energy_delta, 4)} Now: {now.time()} Last-Check: {self._last_checked_time.time()})"
                         )
-                    return current_energy
+                    return (
+                        current_energy
+                        if current_energy >= self._last_written_value
+                        else self._last_written_value
+                    )
             else:
                 _LOGGER.info(
-                    f"Gap zu groß  für Sensor {self.sensor_definition.key}! (Current-Energy: {current_energy} Last-Energy: {self._last_written_value} dt: {dt_hours} Leistung: {int(calculated_power)} Limit: {self.sensor_definition.max_power} Delta: {round(energy_delta, 4)} Now: {now.time()} Last-Check: {self._last_checked_time.time()})"
+                    f"Gap zu groß für Sensor {self.sensor_definition.key}! (Current-Energy: {current_energy} Last-Energy: {self._last_written_value} dt: {dt_hours} Leistung: {int(calculated_power)} Limit: {self.sensor_definition.max_power} Delta: {round(energy_delta, 4)} Now: {now.time()} Last-Check: {self._last_checked_time.time()})"
                 )
                 return current_energy
 
-        #_LOGGER.info(f"No Condition select. Return current energy {current_energy} at {now.time()}")
-        #return current_energy
+        # _LOGGER.info(f"No Condition select. Return current energy {current_energy} at {now.time()}")
+        # return current_energy
