@@ -59,6 +59,7 @@ class EnergySensorDef:
     key: str
     name: str
     reset_at_midnight: bool = False
+    is_calculated: bool = False
     max_power: int | None = None
 
 
@@ -406,11 +407,7 @@ ENERGY_SENSOR_MAP: list[EnergySensorDef] = [
         reset_at_midnight=True,
         max_power=MAX_GRID_POWER,
     ),
-    EnergySensorDef(
-        "grid_export_total", 
-        "Grid Export Total", 
-        max_power=MAX_GRID_POWER
-    ),
+    EnergySensorDef("grid_export_total", "Grid Export Total", max_power=MAX_GRID_POWER),
     EnergySensorDef(
         "grid_export_today",
         "Grid Export Today",
@@ -450,11 +447,13 @@ ENERGY_SENSOR_MAP: list[EnergySensorDef] = [
         "house_energy_today",
         "House Consumption Today",
         reset_at_midnight=True,
+        is_calculated=True,
         max_power=MAX_GRID_POWER,
     ),
     EnergySensorDef(
         "house_energy_total",
         "House Consumption Total",
+        is_calculated=True,
         max_power=MAX_GRID_POWER,
     ),
     # EnergySensorDef(

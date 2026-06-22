@@ -208,18 +208,22 @@ class EcoflowCoordinator(DataUpdateCoordinator):
 
     def _sanitize_energy_values(self, data: dict) -> dict:
         now = dt.now()
-        if self._last_checked_time is None:
+        if self._last_checked_time is None or self._last_checked_data is None:
             _LOGGER.info(
-                f"Last checked time is None at {now.time()}. Return current data."
+                f"Last checked time or data is None at {now.time()}. Return current data."
             )
             return data
-        elif (now - self._last_checked_time).total_seconds() < 1:
+        elif (
+            now - self._last_checked_time
+        ).total_seconds() < 1 and self._last_checked_data is not None:
             _LOGGER.debug(
                 f"dt is less then one secend. Return last data. Delta-t: {(now - self._last_checked_time).total_seconds()}"
             )
             return self._last_checked_data
 
         for energy_sensor in ENERGY_SENSOR_MAP:
+            if energy_sensor.is_calculated:
+                continue
             current_energy = data.get(energy_sensor.key, None)
             last_energy = self._last_checked_data.get(energy_sensor.key, None)
             if current_energy is None:
@@ -267,6 +271,8 @@ class EcoflowCoordinator(DataUpdateCoordinator):
                     _LOGGER.info(
                         f"Gap zu groß für Sensor {energy_sensor.key}! (Current-Energy: {current_energy} Last-Energy: {last_energy} dt: {dt_hours} Leistung: {int(calculated_power)} Limit: {energy_sensor.max_power} Delta: {round(energy_delta, 4)} Now: {now.time()} Last-Check: {self._last_checked_time.time()})"
                     )
+
+        return data
 
     def _get_calculated_values(self, data: dict) -> dict:
         calc_data = {}
@@ -320,6 +326,7 @@ class EcoflowCoordinator(DataUpdateCoordinator):
             if (raw_data := await self.async_get_raw_data()) is None:
                 return None
 
+            data = {}
             data = self._sanitize_energy_values(raw_data)
             self._last_checked_data = data
             self._last_checked_time = dt.now()
