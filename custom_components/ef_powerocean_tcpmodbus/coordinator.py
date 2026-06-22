@@ -7,10 +7,12 @@ import logging
 import struct
 from datetime import timedelta
 
+from datetime import datetime
 from pymodbus import __version__ as pyModbusVersion
 from pymodbus.client import AsyncModbusTcpClient
 from pymodbus.exceptions import ModbusException
 
+from homeassistant.util import dt
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
@@ -20,6 +22,7 @@ from .const import (
     LIMIT_DISCHARGE,
     PV_CURRENT_THRESHOLD,
     DEFAULT_SLAVE,
+    ENERGY_SENSOR_MAP,
     MOD_REGISTER_MAP,
     DEFAULT_BATTERY_COUNT,
 )
@@ -58,6 +61,31 @@ class EcoflowCoordinator(DataUpdateCoordinator):
         )
         self._client_slave_id = DEFAULT_SLAVE
         self._lock = asyncio.Lock()
+
+        self._last_checked_data: dict | None = None
+        self._last_checked_time: datetime = None
+
+    @staticmethod
+    def _decode_register(
+        regs: list[int], register_index: int, register_size: int
+    ) -> float:
+        """Decode a word-swapped 32-bit IEEE 754 float from two 16-bit registers."""
+        if not regs:
+            return None
+        elif register_size == 1:
+            return round(float(regs[register_index]), 2)
+        elif len(regs) < register_index + 2:
+            return None
+
+        try:
+            raw = struct.pack("<HH", regs[register_index], regs[register_index + 1])
+            value = struct.unpack("<f", raw)[0]
+        except (struct.error, TypeError):  # FIX: korrekte Python-3-Syntax
+            return None
+
+        if abs(value) > 1e9 or value != value:  # guard against NaN / inf
+            return None
+        return round(value, 2)
 
     def get_pymodbus_version(self) -> str:
         return pyModbusVersion
@@ -124,27 +152,121 @@ class EcoflowCoordinator(DataUpdateCoordinator):
                 )
             return res.registers
 
-    @staticmethod
-    def _decode_register(
-        regs: list[int], register_index: int, register_size: int
-    ) -> float:
-        """Decode a word-swapped 32-bit IEEE 754 float from two 16-bit registers."""
-        if not regs:
-            return None
-        elif register_size == 1:
-            return round(float(regs[register_index]), 2)
-        elif len(regs) < register_index + 2:
-            return None
+    async def async_get_raw_data(self) -> dict:
+        data: dict = {}
+
+        # ── Check Connection, if not -> start reconnection ──
+        if not self._client.connected and not await self.async_reconnect():
+            raise UpdateFailed("Reconnect failed!")
 
         try:
-            raw = struct.pack("<HH", regs[register_index], regs[register_index + 1])
-            value = struct.unpack("<f", raw)[0]
-        except (struct.error, TypeError):  # FIX: korrekte Python-3-Syntax
-            return None
+            # Read all register blocks
+            for register_block in MOD_REGISTER_MAP["blocks"]:
+                raw = await self.async_read_block(
+                    register_block.start_register, register_block.num_read_regs
+                )
+                for register in register_block.content:
+                    decode_value = self._decode_register(
+                        raw, register.block_index, register.size
+                    )
+                    data[register.key] = decode_value
 
-        if abs(value) > 1e9 or value != value:  # guard against NaN / inf
+            if data["battery_count"] != DEFAULT_BATTERY_COUNT:
+                _LOGGER.info(
+                    f"Readed battery count {data['battery_count']} is unequal -> Skip data! Wait 35s for reconnect!"
+                )
+                self._client.close()
+                await asyncio.sleep(SLEEP_TIME_AFTER_HEARTBEAT_FAILED)
+                return None
+
+            return data
+        except ModbusException as err:
+            _LOGGER.debug(f"Modbus-Error: {repr(err)}. Connection closing...")
+            self._client.close()
             return None
-        return round(value, 2)
+        except Exception as err:
+            _LOGGER.error(f"Unexpected error during data fetch: {repr(err)}")
+            return data
+
+            #     data["operation_mode"] = a[9] if len(a) > 9 else None
+            #     # FIX: PV-Leistung pro String mit eigener Spannung berechnen
+            #     # Solar power: sum of active strings only
+            #     data["solar_power"] = round(
+            #         sum(data[f"pv{i}_power"] for i in range(1, self._pv_strings + 1)), 1
+            #     )
+
+            #     # Grid power: if register 40521 gave None, derive from energy balance as fallback
+            #     if data.get("grid_power", None) is None:
+            #         house = data.get("house_power", 0)
+            #         solar = data.get("solar_power", 0)
+            #         bat = data.get("battery_power", 0)
+            #         if any(v != 0 for v in [house, solar, bat]):
+            #             data["grid_power"] = round(house - solar + bat, 1)
+            #             _LOGGER.info(
+            #                 f"grid_power derived from balance: {data['grid_power']} W"
+            #             )
+
+    def _sanitize_energy_values(self, data: dict) -> dict:
+        now = dt.now()
+        if self._last_checked_time is None:
+            _LOGGER.info(
+                f"Last checked time is None at {now.time()}. Return current data."
+            )
+            return data
+        elif (now - self._last_checked_time).total_seconds() < 1:
+            _LOGGER.debug(
+                f"dt is less then one secend. Return last data. Delta-t: {(now - self._last_checked_time).total_seconds()}"
+            )
+            return self._last_checked_data
+
+        for energy_sensor in ENERGY_SENSOR_MAP:
+            current_energy = data.get(energy_sensor.key, None)
+            last_energy = self._last_checked_data.get(energy_sensor.key, None)
+            if current_energy is None:
+                # Wenn nicht verfügbar oder None, wird es in sensor.py abgearbeitet
+                _LOGGER.info(
+                    f"Current_energy is None at {now.time()} für Sensor {energy_sensor.key}"
+                )
+                continue
+            elif (
+                energy_sensor.reset_at_midnight
+                and current_energy == 0
+                and last_energy > 0
+                and now.hour == 0
+                and now.minute < 1
+            ):
+                # Reset nur zwischen 00:00 und 00:01 erlauben
+                _LOGGER.info(f"Reset bei {now.time()} Uhr für {energy_sensor.key}")
+                data[energy_sensor.key] = 0
+            else:
+                dt_hours = (now - self._last_checked_time).total_seconds() / 3600
+                # Nur innerhalb einer 1h Stunde prüfen, danach ist das Gap zu groß
+                if 0 < dt_hours <= 1:
+                    # Anstieg berechnen
+                    energy_delta = current_energy - last_energy
+                    calculated_power = energy_delta / dt_hours
+                    if calculated_power > energy_sensor.max_power:
+                        # positiver Anstieg und Lesitung über Max-Leistung
+                        _LOGGER.warning(
+                            f"Rohwert blockiert für Sensor {energy_sensor.key}! (Current-Energy: {current_energy} Last-Energy: {last_energy} dt: {dt_hours} Leistung: {int(calculated_power)} Limit: {energy_sensor.max_power} Delta: {round(energy_delta, 4)} Now: {now.time()} Last-Check: {self._last_checked_time.time()})"
+                        )
+                        data[energy_sensor.key] = last_energy
+                    else:
+                        # negativer Anstieg oder unterhalb der Max-Leistung
+                        if current_energy == 0 and last_energy > 0:
+                            _LOGGER.warning(
+                                f"Rohwert 0 kWh für Sensor {energy_sensor.key}! (Current-Energy: {current_energy} Last-Energy: {last_energy} dt: {dt_hours} Leistung: {int(calculated_power)} Limit: {energy_sensor.max_power} Delta: {round(energy_delta, 4)} Now: {now.time()} Last-Check: {self._last_checked_time.time()})"
+                            )
+                        # Rückgabe des aktuellen Wertes nur wenn der neue Wert > letzter Wert ist
+                        data[energy_sensor.key] = (
+                            current_energy
+                            if current_energy >= last_energy
+                            else last_energy
+                        )
+                else:
+                    _LOGGER.info(
+                        f"Gap zu groß für Sensor {energy_sensor.key}! (Current-Energy: {current_energy} Last-Energy: {last_energy} dt: {dt_hours} Leistung: {int(calculated_power)} Limit: {energy_sensor.max_power} Delta: {round(energy_delta, 4)} Now: {now.time()} Last-Check: {self._last_checked_time.time()})"
+                    )
 
     def _get_calculated_values(self, data: dict) -> dict:
         calc_data = {}
@@ -193,68 +315,18 @@ class EcoflowCoordinator(DataUpdateCoordinator):
 
         return calc_data
 
-    # ------------------------------------------------------------------
-    # Data fetch
-    # ------------------------------------------------------------------
-
-    async def _fetch_all(self) -> dict:
-        data: dict = {}
-
-        # ── Check Connection, if not -> start reconnection ──
-        if not self._client.connected and not await self.async_reconnect():
-            raise UpdateFailed("Reconnect failed!")
-
-        try:
-            # Read all register blocks
-            for register_block in MOD_REGISTER_MAP["blocks"]:
-                raw = await self.async_read_block(
-                    register_block.start_register, register_block.num_read_regs
-                )
-                for register in register_block.content:
-                    decode_value = self._decode_register(
-                        raw, register.block_index, register.size
-                    )
-                    data[register.key] = decode_value
-
-            if data["battery_count"] != DEFAULT_BATTERY_COUNT:
-                _LOGGER.info(
-                    f"Readed battery count {data['battery_count']} is unequal -> Skip data! Wait 35s for reconnect!"
-                )
-                self._client.close()
-                await asyncio.sleep(SLEEP_TIME_AFTER_HEARTBEAT_FAILED)
-                return None
-
-            data.update(self._get_calculated_values(data))
-            return data
-        except ModbusException as err:
-            _LOGGER.debug(f"Modbus-Error: {repr(err)}. Connection closing...")
-            self._client.close()
-            return None
-        except Exception as err:
-            _LOGGER.error(f"Unexpected error during data fetch: {repr(err)}")
-            return data
-
-            #     data["operation_mode"] = a[9] if len(a) > 9 else None
-            #     # FIX: PV-Leistung pro String mit eigener Spannung berechnen
-            #     # Solar power: sum of active strings only
-            #     data["solar_power"] = round(
-            #         sum(data[f"pv{i}_power"] for i in range(1, self._pv_strings + 1)), 1
-            #     )
-
-            #     # Grid power: if register 40521 gave None, derive from energy balance as fallback
-            #     if data.get("grid_power", None) is None:
-            #         house = data.get("house_power", 0)
-            #         solar = data.get("solar_power", 0)
-            #         bat = data.get("battery_power", 0)
-            #         if any(v != 0 for v in [house, solar, bat]):
-            #             data["grid_power"] = round(house - solar + bat, 1)
-            #             _LOGGER.info(
-            #                 f"grid_power derived from balance: {data['grid_power']} W"
-            #             )
-
     async def _async_update_data(self) -> dict:
         try:
-            return await self._fetch_all()
+            if (raw_data := await self.async_get_raw_data()) is None:
+                return None
+
+            data = self._sanitize_energy_values(raw_data)
+            self._last_checked_data = data
+            self._last_checked_time = dt.now()
+
+            data.update(self._get_calculated_values(data))
+
+            return data
         except UpdateFailed:  # noqa: BLE001
             raise UpdateFailed(
                 "Reconnect attempts failed! Integration stopped. Retry after 120s.",

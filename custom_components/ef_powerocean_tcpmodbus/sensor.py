@@ -135,7 +135,14 @@ async def async_setup_entry(
         entities.append(EcoflowSensor(coordinator, description, entry, sensor))
 
     for sensor in ENERGY_SENSOR_MAP:
-        entities.append(EcoflowEnergySensor(coordinator, sensor, entry))
+        description = EcoflowSensorDescription(
+            key=sensor.key,
+            name=sensor.name,
+            native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
+            device_class=SensorDeviceClass.ENERGY,
+            state_class=SensorStateClass.TOTAL_INCREASING,
+        )
+        entities.append(EcoflowSensor(coordinator, description, entry, sensor))
 
     async_add_entities(entities)
 
@@ -184,7 +191,7 @@ class EcoflowSensor(CoordinatorEntity[EcoflowCoordinator], RestoreSensor):
                 f"Restore Sensor '{self.entity_description.name}' with value: {last_value.native_value}"
             )
             self._restored_value = last_value.native_value
-            self._last_written_value = last_value.native_value
+            self._last_written_value = self._restored_value
 
     @property
     def native_value(self) -> float | int | str | None:
