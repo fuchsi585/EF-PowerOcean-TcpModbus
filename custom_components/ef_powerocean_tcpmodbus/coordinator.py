@@ -5,6 +5,8 @@ from __future__ import annotations
 import asyncio
 import logging
 import struct
+
+from typing import Any
 from datetime import timedelta
 
 from datetime import datetime
@@ -119,7 +121,9 @@ class EcoflowCoordinator(DataUpdateCoordinator):
     async def async_reconnect(self) -> bool:
         """Client-Reconnect"""
         delays = [0, 5, 30, 120]
-        _LOGGER.info("PowerOcean is not connected. Start reconnect!")
+        _LOGGER.info(
+            "PowerOcean (SN: %s) is not connected. Start reconnect!", self.serial_number
+        )
 
         for i, delay in enumerate(delays):
             async with self._lock:
@@ -129,7 +133,7 @@ class EcoflowCoordinator(DataUpdateCoordinator):
 
                 _LOGGER.info(f"Modbus TCP reconnect (Attempt {i + 1}/4)...")
                 if await self._client.connect() and self._client.connected:
-                    _LOGGER.info("Reconnect successful!")
+                    _LOGGER.info("Reconnect successful! (SN: %s)", self.serial_number)
                     await asyncio.sleep(SLEEP_TIME_AFTER_RECONNECT)
                     return True
                 self._client.close()
@@ -152,8 +156,8 @@ class EcoflowCoordinator(DataUpdateCoordinator):
                 )
             return res.registers
 
-    async def async_get_raw_data(self) -> dict:
-        data: dict = {}
+    async def async_get_raw_data(self) -> dict[str, Any]:
+        data: dict[str, Any] = {}
 
         # ── Check Connection, if not -> start reconnection ──
         if not self._client.connected and not await self.async_reconnect():
@@ -206,25 +210,25 @@ class EcoflowCoordinator(DataUpdateCoordinator):
             #                 f"grid_power derived from balance: {data['grid_power']} W"
             #             )
 
-    def _sanitize_energy_values(self, data: dict) -> dict:
+    def _sanitize_energy_values(self, data: dict[str, Any]) -> dict[str, Any]:
+        result: dict[str, Any] = dict(data)
+
         now = dt.now()
         if self._last_checked_time is None or self._last_checked_data is None:
             _LOGGER.info(
                 f"Last checked time or data is None at {now.time()}. Return current data."
             )
-            return data
-        elif (
-            now - self._last_checked_time
-        ).total_seconds() < 1 and self._last_checked_data is not None:
+            return result
+        elif (now - self._last_checked_time).total_seconds() < 1:
             _LOGGER.debug(
                 f"dt is less then one secend. Return last data. Delta-t: {(now - self._last_checked_time).total_seconds()}"
             )
-            return self._last_checked_data
+            return dict(self._last_checked_data)
 
         for energy_sensor in ENERGY_SENSOR_MAP:
             if energy_sensor.is_calculated:
                 continue
-            current_energy = data.get(energy_sensor.key, None)
+            current_energy = result.get(energy_sensor.key, None)
             last_energy = self._last_checked_data.get(energy_sensor.key, None)
             if current_energy is None:
                 # Wenn nicht verfügbar oder None, wird es in sensor.py abgearbeitet
@@ -241,7 +245,7 @@ class EcoflowCoordinator(DataUpdateCoordinator):
             ):
                 # Reset nur zwischen 00:00 und 00:01 erlauben
                 _LOGGER.info(f"Reset bei {now.time()} Uhr für {energy_sensor.key}")
-                data[energy_sensor.key] = 0
+                result[energy_sensor.key] = 0
             else:
                 dt_hours = (now - self._last_checked_time).total_seconds() / 3600
                 # Nur innerhalb einer 1h Stunde prüfen, danach ist das Gap zu groß
@@ -254,7 +258,7 @@ class EcoflowCoordinator(DataUpdateCoordinator):
                         _LOGGER.warning(
                             f"Rohwert blockiert für Sensor {energy_sensor.key}! (Current-Energy: {current_energy} Last-Energy: {last_energy} dt: {dt_hours} Leistung: {int(calculated_power)} Limit: {energy_sensor.max_power} Delta: {round(energy_delta, 4)} Now: {now.time()} Last-Check: {self._last_checked_time.time()})"
                         )
-                        data[energy_sensor.key] = last_energy
+                        result[energy_sensor.key] = last_energy
                     else:
                         # negativer Anstieg oder unterhalb der Max-Leistung
                         if current_energy == 0 and last_energy > 0:
@@ -262,7 +266,7 @@ class EcoflowCoordinator(DataUpdateCoordinator):
                                 f"Rohwert 0 kWh für Sensor {energy_sensor.key}! (Current-Energy: {current_energy} Last-Energy: {last_energy} dt: {dt_hours} Leistung: {int(calculated_power)} Limit: {energy_sensor.max_power} Delta: {round(energy_delta, 4)} Now: {now.time()} Last-Check: {self._last_checked_time.time()})"
                             )
                         # Rückgabe des aktuellen Wertes nur wenn der neue Wert > letzter Wert ist
-                        data[energy_sensor.key] = (
+                        result[energy_sensor.key] = (
                             current_energy
                             if current_energy >= last_energy
                             else last_energy
@@ -272,10 +276,11 @@ class EcoflowCoordinator(DataUpdateCoordinator):
                         f"Gap zu groß für Sensor {energy_sensor.key}! (Current-Energy: {current_energy} Last-Energy: {last_energy} dt: {dt_hours} Leistung: {int(calculated_power)} Limit: {energy_sensor.max_power} Delta: {round(energy_delta, 4)} Now: {now.time()} Last-Check: {self._last_checked_time.time()})"
                     )
 
-        return data
+        return result
 
-    def _get_calculated_values(self, data: dict) -> dict:
-        calc_data = {}
+    def _get_calculated_values(self, data: dict[str, Any]) -> dict[str, Any]:
+        calc_data: dict[str, Any] = {}
+
         calc_data["battery_capacity"] = self._battery_capacity  # user-configured kWh
         calc_data["bat_remaining"] = round(
             self._battery_capacity * data["battery_soc"] / 100, 2
@@ -321,19 +326,19 @@ class EcoflowCoordinator(DataUpdateCoordinator):
 
         return calc_data
 
-    async def _async_update_data(self) -> dict:
+    async def _async_update_data(self) -> dict[str, Any]:
         try:
             if (raw_data := await self.async_get_raw_data()) is None:
                 return None
 
-            data = {}
-            data = self._sanitize_energy_values(raw_data)
-            self._last_checked_data = data
+            result = self._sanitize_energy_values(raw_data)
+            self._last_checked_data = dict(result)
             self._last_checked_time = dt.now()
 
-            data.update(self._get_calculated_values(data))
+            calculated_results = self._get_calculated_values(result)
+            result.update(calculated_results)
 
-            return data
+            return dict(result)
         except UpdateFailed:  # noqa: BLE001
             raise UpdateFailed(
                 "Reconnect attempts failed! Integration stopped. Retry after 120s.",
