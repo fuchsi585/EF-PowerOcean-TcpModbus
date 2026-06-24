@@ -64,8 +64,9 @@ class EcoflowCoordinator(DataUpdateCoordinator):
         self._client_slave_id = DEFAULT_SLAVE
         self._lock = asyncio.Lock()
 
-        self._last_checked_data: dict | None = None
+        self._last_checked_data: dict[str, Any] = {}
         self._last_checked_time: datetime = None
+        self._check_monotonic: bool = True
 
     @staticmethod
     def _decode_register(
@@ -82,7 +83,7 @@ class EcoflowCoordinator(DataUpdateCoordinator):
         try:
             raw = struct.pack("<HH", regs[register_index], regs[register_index + 1])
             value = struct.unpack("<f", raw)[0]
-        except (struct.error, TypeError):  # FIX: korrekte Python-3-Syntax
+        except struct.error, TypeError:  # FIX: korrekte Python-3-Syntax
             return None
 
         if abs(value) > 1e9 or value != value:  # guard against NaN / inf
@@ -212,6 +213,7 @@ class EcoflowCoordinator(DataUpdateCoordinator):
 
     def _sanitize_energy_values(self, data: dict[str, Any]) -> dict[str, Any]:
         result: dict[str, Any] = dict(data)
+        self._check_monotonic = True
 
         now = dt.now()
         if self._last_checked_time is None or self._last_checked_data is None:
@@ -246,6 +248,7 @@ class EcoflowCoordinator(DataUpdateCoordinator):
                 # Reset nur zwischen 00:00 und 00:01 erlauben
                 _LOGGER.info(f"Reset bei {now.time()} Uhr für {energy_sensor.key}")
                 result[energy_sensor.key] = 0
+                self._check_monotonic = False
             else:
                 dt_hours = (now - self._last_checked_time).total_seconds() / 3600
                 # Nur innerhalb einer 1h Stunde prüfen, danach ist das Gap zu groß
@@ -326,17 +329,36 @@ class EcoflowCoordinator(DataUpdateCoordinator):
 
         return calc_data
 
+    def _enforced_monotonic(self, data: dict[str, Any]) -> dict[str, Any]:
+        result = dict(data)
+
+        for energy_senser in ENERGY_SENSOR_MAP:
+            if (
+                energy_senser.key in result
+                and energy_senser.key in self._last_checked_data
+            ):
+                last = self._last_checked_data[energy_senser.key]
+                current = result[energy_senser.key]
+
+                if last is not None and current is not None and current < last:
+                    result[energy_senser.key] = last
+
+        return result
+
     async def _async_update_data(self) -> dict[str, Any]:
         try:
             if (raw_data := await self.async_get_raw_data()) is None:
                 return None
 
             result = self._sanitize_energy_values(raw_data)
-            self._last_checked_data = dict(result)
-            self._last_checked_time = dt.now()
-
             calculated_results = self._get_calculated_values(result)
             result.update(calculated_results)
+
+            if self._check_monotonic:
+                result = self._enforced_monotonic(result)
+
+            self._last_checked_data = dict(result)
+            self._last_checked_time = dt.now()
 
             return dict(result)
         except UpdateFailed:  # noqa: BLE001
