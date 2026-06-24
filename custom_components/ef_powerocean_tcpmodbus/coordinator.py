@@ -217,9 +217,7 @@ class EcoflowCoordinator(DataUpdateCoordinator):
 
         now = dt.now()
         if self._last_checked_time is None or self._last_checked_data is None:
-            _LOGGER.info(
-                f"Last checked time or data is None at {now.time()}. Return current data."
-            )
+            _LOGGER.info(f"Last checked time or data is None. Return current data.")
             return result
         elif (now - self._last_checked_time).total_seconds() < 1:
             _LOGGER.debug(
@@ -232,10 +230,9 @@ class EcoflowCoordinator(DataUpdateCoordinator):
                 continue
             current_energy = result.get(energy_sensor.key, None)
             last_energy = self._last_checked_data.get(energy_sensor.key, None)
-            if current_energy is None:
-                # Wenn nicht verfügbar oder None, wird es in sensor.py abgearbeitet
+            if current_energy is None or last_energy is None:
                 _LOGGER.info(
-                    f"Current_energy is None at {now.time()} für Sensor {energy_sensor.key}"
+                    f"Current energy or last energy is None of entity {energy_sensor.key}"
                 )
                 continue
             elif (
@@ -246,7 +243,7 @@ class EcoflowCoordinator(DataUpdateCoordinator):
                 and now.minute < 1
             ):
                 # Reset nur zwischen 00:00 und 00:01 erlauben
-                _LOGGER.info(f"Reset bei {now.time()} Uhr für {energy_sensor.key}")
+                _LOGGER.info(f"Reset of entity {energy_sensor.key}")
                 result[energy_sensor.key] = 0
                 self._check_monotonic = False
             else:
@@ -259,14 +256,14 @@ class EcoflowCoordinator(DataUpdateCoordinator):
                     if calculated_power > energy_sensor.max_power:
                         # positiver Anstieg und Lesitung über Max-Leistung
                         _LOGGER.warning(
-                            f"Rohwert blockiert für Sensor {energy_sensor.key}! (Current-Energy: {current_energy} Last-Energy: {last_energy} dt: {dt_hours} Leistung: {int(calculated_power)} Limit: {energy_sensor.max_power} Delta: {round(energy_delta, 4)} Now: {now.time()} Last-Check: {self._last_checked_time.time()})"
+                            f"Skip raw energy of entity {energy_sensor.key}! (raw energy: {current_energy} last energy: {last_energy} dt: {dt_hours} power: {int(calculated_power)} limit: {energy_sensor.max_power} delta power: {round(energy_delta, 4)} last check: {self._last_checked_time.time()})"
                         )
                         result[energy_sensor.key] = last_energy
                     else:
                         # negativer Anstieg oder unterhalb der Max-Leistung
                         if current_energy == 0 and last_energy > 0:
                             _LOGGER.warning(
-                                f"Rohwert 0 kWh für Sensor {energy_sensor.key}! (Current-Energy: {current_energy} Last-Energy: {last_energy} dt: {dt_hours} Leistung: {int(calculated_power)} Limit: {energy_sensor.max_power} Delta: {round(energy_delta, 4)} Now: {now.time()} Last-Check: {self._last_checked_time.time()})"
+                                f"Skip raw value 0 kWh of entity {energy_sensor.key}! (raw energy: {current_energy} last energy: {last_energy} dt: {dt_hours} power: {int(calculated_power)} limit: {energy_sensor.max_power} delta power: {round(energy_delta, 4)} last check: {self._last_checked_time.time()})"
                             )
                         # Rückgabe des aktuellen Wertes nur wenn der neue Wert > letzter Wert ist
                         result[energy_sensor.key] = (
@@ -276,7 +273,7 @@ class EcoflowCoordinator(DataUpdateCoordinator):
                         )
                 else:
                     _LOGGER.info(
-                        f"Gap zu groß für Sensor {energy_sensor.key}! (Current-Energy: {current_energy} Last-Energy: {last_energy} dt: {dt_hours} Leistung: {int(calculated_power)} Limit: {energy_sensor.max_power} Delta: {round(energy_delta, 4)} Now: {now.time()} Last-Check: {self._last_checked_time.time()})"
+                        f"Time window is too large of entity {energy_sensor.key}! (raw energy: {current_energy} last energy: {last_energy} dt: {dt_hours} power: {int(calculated_power)} limit: {energy_sensor.max_power} delta power: {round(energy_delta, 4)} last check: {self._last_checked_time.time()})"
                     )
 
         return result
@@ -285,65 +282,117 @@ class EcoflowCoordinator(DataUpdateCoordinator):
         calc_data: dict[str, Any] = {}
 
         calc_data["battery_capacity"] = self._battery_capacity  # user-configured kWh
-        calc_data["bat_remaining"] = round(
-            self._battery_capacity * data["battery_soc"] / 100, 2
+
+        battery_soc = data.get("battery_soc", None)
+        calc_data["bat_remaining"] = (
+            round(self._battery_capacity * battery_soc / 100, 2)
+            if battery_soc is not None
+            else None
         )
-        calc_data["limit_discharge"] = round(
-            data["battery_count"] * LIMIT_DISCHARGE
-        )  # 3.3 kW per module
-        calc_data["limit_charge"] = round(data["battery_count"] * LIMIT_CHARGE)
-        calc_data["bat_net_energy"] = round(
-            data["bat_charged_total"] - data["bat_discharged_total"], 2
+        battery_count = data.get("battery_count", None)
+        calc_data["limit_discharge"] = (
+            round(battery_count * LIMIT_DISCHARGE)
+            if battery_count is not None
+            else None
         )
-        calc_data["house_energy_today"] = round(
-            data.get("solar_today", 0)
-            + data.get("grid_import_today", 0)
-            - data.get("grid_export_today", 0)
-            - data.get("bat_charged_today", 0)
-            + data.get("bat_discharged_today", 0),
-            2,
+        calc_data["limit_charge"] = (
+            round(battery_count * LIMIT_CHARGE) if battery_count is not None else None
         )
-        calc_data["house_energy_total"] = round(
-            data.get("solar_total", 0)
-            + data.get("grid_import_total", 0)
-            - data.get("grid_export_total", 0)
-            - data.get("bat_charged_total", 0)
-            + data.get("bat_discharged_total", 0),
-            0,
+        bat_charged_total = data.get("bat_charged_total", None)
+        bat_discharged_total = data.get("bat_discharged_total", None)
+        calc_data["bat_net_energy"] = (
+            round(bat_charged_total - bat_discharged_total, 2)
+            if bat_charged_total is not None and bat_discharged_total is not None
+            else None
         )
+
+        # house energy calculation
+        solar_today = data.get("solar_today", None)
+        grid_import_today = data.get("grid_import_today", None)
+        grid_export_today = data.get("grid_export_today", None)
+        bat_charged_today = data.get("bat_charged_today", None)
+        bat_discharged_today = data.get("bat_discharged_today", None)
+        calc_data["house_energy_today"] = (
+            round(
+                solar_today
+                + grid_import_today
+                + bat_discharged_today
+                - grid_export_today
+                - bat_charged_today,
+                2,
+            )
+            if solar_today is not None
+            and grid_import_today is not None
+            and bat_discharged_today is not None
+            and grid_export_today is not None
+            and bat_charged_today is not None
+            else None
+        )
+        solar_total = data.get("solar_total", None)
+        grid_import_total = data.get("grid_import_total", None)
+        grid_export_total = data.get("grid_export_total", None)
+        calc_data["house_energy_total"] = (
+            round(
+                solar_total
+                + grid_import_total
+                + bat_discharged_total
+                - grid_export_total
+                - bat_charged_total,
+                0,
+            )
+            if solar_total is not None
+            and grid_import_total is not None
+            and bat_discharged_total is not None
+            and grid_export_total is not None
+            and bat_charged_total is not None
+            else None
+        )
+
+        pv1_current = data.get("pv1_current", None)
+        pv1_voltage = data.get("pv1_voltage", None)
+        pv2_current = data.get("pv2_current", None)
+        pv2_voltage = data.get("pv2_voltage", None)
+        pv3_current = data.get("pv3_current", None)
+        pv3_voltage = data.get("pv3_voltage", None)
         calc_data["pv1_power"] = (
-            0
-            if data["pv1_current"] < PV_CURRENT_THRESHOLD
-            else round(data["pv1_current"] * (data["pv1_voltage"] or 0.0), 1)
+            None
+            if pv1_current is None or pv1_voltage is None
+            else (
+                0
+                if pv1_current < PV_CURRENT_THRESHOLD
+                else round(pv1_current * pv1_voltage, 1)
+            )
         )
         calc_data["pv2_power"] = (
-            0
-            if data["pv2_current"] < PV_CURRENT_THRESHOLD
-            else round(data["pv2_current"] * (data["pv2_voltage"] or 0.0), 1)
+            None
+            if pv2_current is None or pv2_voltage is None
+            else (
+                0
+                if pv2_current < PV_CURRENT_THRESHOLD
+                else round(pv2_current * pv2_voltage, 1)
+            )
         )
         calc_data["pv3_power"] = (
-            0
-            if data["pv3_current"] < PV_CURRENT_THRESHOLD
-            else round(data["pv3_current"] * (data["pv3_voltage"] or 0.0), 1)
+            None
+            if pv3_current is None or pv3_voltage is None
+            else (
+                0
+                if pv3_current < PV_CURRENT_THRESHOLD
+                else round(pv3_current * pv3_voltage, 1)
+            )
         )
 
         return calc_data
 
     def _enforced_monotonic(self, data: dict[str, Any]) -> dict[str, Any]:
-        result = dict(data)
 
         for energy_senser in ENERGY_SENSOR_MAP:
-            if (
-                energy_senser.key in result
-                and energy_senser.key in self._last_checked_data
-            ):
-                last = self._last_checked_data[energy_senser.key]
-                current = result[energy_senser.key]
+            last = self._last_checked_data.get(energy_senser.key, None)
+            current = data.get(energy_senser.key, None)
+            if last is not None and current is not None and current < last:
+                data[energy_senser.key] = last
 
-                if last is not None and current is not None and current < last:
-                    result[energy_senser.key] = last
-
-        return result
+        return data
 
     async def _async_update_data(self) -> dict[str, Any]:
         try:
