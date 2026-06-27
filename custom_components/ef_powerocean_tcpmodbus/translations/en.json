@@ -3,19 +3,21 @@
     "step": {
       "user": {
         "title": "EcoFlow PowerOcean",
-        "description": "Enter the connection details for your PowerOcean Plus.",
+        "description": "Enter the connection details for your inverter.",
         "data": {
           "host": "IP Address",
           "port": "Modbus TCP Port",
-          "battery_capacity": "Battery Capacity (kWh)",
-          "pv_strings": "Number of PV Strings",
+          "battery_count": "Battery module count",
+          "solar_power_max": "Maximum solar power",
+          "grid_power_max": "Maximum grid power",
           "scan_interval": "Poll Interval (seconds)"
         },
         "data_description": {
-          "host": "Local IP address of the PowerOcean Plus",
+          "host": "Local IP address of the inverter.",
           "port": "Default is 502",
-          "battery_capacity": "Usable capacity of your battery module, e.g. 5.0 for a 5 kWh module",
-          "pv_strings": "Number of PV strings connected to the inverter (1–3). Unused strings are ignored.",
+          "battery_count": "Count of your battery modules.",
+          "solar_power_max": "Maximum solar power. Unused for",
+          "grid_power_max": "Maximum grid power",
           "scan_interval": "How often values are polled (2–60 seconds)"
         }
       }
@@ -31,19 +33,21 @@
     "step": {
       "init": {
         "title": "EcoFlow PowerOcean – Settings",
-        "description": "Adjust connection and polling settings.",
+        "description": "Adjust settings.",
         "data": {
           "host": "IP Address",
           "port": "Modbus TCP Port",
-          "battery_capacity": "Battery Capacity (kWh)",
-          "pv_strings": "Number of PV Strings",
+          "battery_count": "Battery module count",
+          "solar_power_max": "Maximum solar power",
+          "grid_power_max": "Maximum grid power",
           "scan_interval": "Poll Interval (seconds)"
         },
         "data_description": {
-          "host": "Local IP address of the PowerOcean Plus",
+          "host": "Local IP address of the inverter.",
           "port": "Default is 502",
-          "battery_capacity": "Usable capacity of your battery module, e.g. 5.0 for a 5 kWh module",
-          "pv_strings": "Number of PV strings connected to the inverter (1–3). Unused strings are ignored.",
+          "battery_count": "Count of your battery modules.",
+          "solar_power_max": "Maximum solar power. Unused for",
+          "grid_power_max": "Maximum grid power",
           "scan_interval": "How often values are polled (2–60 seconds)"
         }
       }

@@ -7,15 +7,17 @@
         "data": {
           "host": "IP-Adresse",
           "port": "Modbus TCP Port",
-          "battery_capacity": "Batteriekapazität (kWh)",
-          "pv_strings": "Anzahl PV-Strings",
+          "battery_count": "Anzahl installierter Batterie-Module",
+          "solar_power_max": "Maximale Solar-Leistung",
+          "grid_power_max": "Maximale Netz-Leistung",
           "scan_interval": "Abfrageintervall (Sekunden)"
         },
         "data_description": {
           "host": "Lokale IP-Adresse des PowerOcean Plus",
           "port": "Standard ist 502",
-          "battery_capacity": "Nutzbare Kapazität des Batteriemoduls, z.B. 5.0 für ein 5-kWh-Modul",
-          "pv_strings": "Anzahl der am Wechselrichter angeschlossenen PV-Strings (1–3). Nicht konfigurierte Strings werden ignoriert.",
+          "battery_count": "Die Anzahl wird zur Berechnung der max. Lade- und Entladeleistung verwendet.",
+          "solar_power_max": "Die max. Solar-Leistung wird für die Überprüfung der empfangenen Werte verwendet.",
+          "grid_power_max": "Die max. Netz-Leistung wird für die Überprüfung der empfangenen Werte verwendet.",
           "scan_interval": "Wie oft Werte abgefragt werden (2–60 Sekunden)"
         }
       }
@@ -35,15 +37,17 @@
         "data": {
           "host": "IP-Adresse",
           "port": "Modbus TCP Port",
-          "battery_capacity": "Batteriekapazität (kWh)",
-          "pv_strings": "Anzahl PV-Strings",
+          "battery_count": "Anzahl installierter Batterie-Module",
+          "solar_power_max": "Maximale Solar-Leistung",
+          "grid_power_max": "Maximale Netz-Leistung",
           "scan_interval": "Abfrageintervall (Sekunden)"
         },
         "data_description": {
           "host": "Lokale IP-Adresse des PowerOcean Plus",
           "port": "Standard ist 502",
-          "battery_capacity": "Nutzbare Kapazität des Batteriemoduls, z.B. 5.0 für ein 5-kWh-Modul",
-          "pv_strings": "Anzahl der am Wechselrichter angeschlossenen PV-Strings (1–3). Nicht konfigurierte Strings werden ignoriert.",
+          "battery_count": "Die Anzahl wird zur Berechnung der max. Lade- und Entladeleistung verwendet.",
+          "solar_power_max": "Die max. Solar-Leistung wird für die Überprüfung der empfangenen Werte verwendet.",
+          "grid_power_max": "Die max. Netz-Leistung wird für die Überprüfung der empfangenen Werte verwendet.",
           "scan_interval": "Wie oft Werte abgefragt werden (2–60 Sekunden)"
         }
       }

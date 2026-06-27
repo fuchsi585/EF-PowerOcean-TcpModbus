@@ -16,17 +16,31 @@ from pymodbus.exceptions import ModbusException
 
 from homeassistant.util import dt
 from homeassistant.core import HomeAssistant
+from homeassistant.config_entries import ConfigEntry
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .const import (
     DOMAIN,
-    LIMIT_CHARGE,
-    LIMIT_DISCHARGE,
+    CONF_HOST,
+    CONF_PORT,
+    CONF_BATTERY_COUNT,
+    CONF_MAX_BATTERY_CHARGED_POWER,
+    CONF_MAX_BATTERY_DISCHARGED_POWER,
+    CONF_MAX_GRID_POWER,
+    CONF_MAX_SOLAR_POWER,
+    CONF_SCAN_INTERVAL,
     PV_CURRENT_THRESHOLD,
     DEFAULT_SLAVE,
     ENERGY_SENSOR_MAP,
     MOD_REGISTER_MAP,
+    DEFAULT_PORT,
+    DEFAULT_MAX_POWER,
     DEFAULT_BATTERY_COUNT,
+    DEFAULT_MAX_GRID_POWER,
+    DEFAULT_MAX_SOLAR_POWER,
+    DEFAULT_SCAN_INTERVAL,
+    MAX_BATTERY_CHARGED_POWER,
+    MAX_BATTERY_DISCHARGED_POWER,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -35,29 +49,56 @@ SLEEP_TIME_AFTER_RECONNECT = 1
 SLEEP_TIME_AFTER_HEARTBEAT_FAILED = 35
 
 
+class DataErrorException(Exception):
+    def __init__(self, string) -> None:
+        self.string = string
+        super().__init__(string)
+
+    def __str__(self) -> str:
+        return f"Ecoflow-Modbus Error: {self.string}"
+
+
 class EcoflowCoordinator(DataUpdateCoordinator):
     """Fetches data from EcoFlow PowerOcean Plus via Modbus TCP."""
 
     def __init__(
         self,
         hass: HomeAssistant,
-        host: str,
-        port: int,
-        battery_capacity: float,
-        scan_interval: int,
-        pv_strings: int,
+        config_entry: ConfigEntry,
     ) -> None:
+        self.host = config_entry.data.get(CONF_HOST)
+        self.port = config_entry.data.get(CONF_PORT, DEFAULT_PORT)
+        self.scan_interval = config_entry.data.get(
+            CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL
+        )
+        self.limits = {
+            CONF_BATTERY_COUNT: config_entry.data.get(
+                CONF_BATTERY_COUNT, DEFAULT_BATTERY_COUNT
+            ),
+            CONF_MAX_GRID_POWER: config_entry.data.get(
+                CONF_MAX_GRID_POWER, DEFAULT_MAX_GRID_POWER
+            ),
+            CONF_MAX_SOLAR_POWER: config_entry.data.get(
+                CONF_MAX_SOLAR_POWER, DEFAULT_MAX_SOLAR_POWER
+            ),
+            CONF_MAX_BATTERY_CHARGED_POWER: config_entry.data.get(
+                CONF_MAX_BATTERY_CHARGED_POWER, MAX_BATTERY_CHARGED_POWER
+            )
+            * config_entry.data.get(CONF_BATTERY_COUNT, DEFAULT_BATTERY_COUNT),
+            CONF_MAX_BATTERY_DISCHARGED_POWER: config_entry.data.get(
+                CONF_MAX_BATTERY_DISCHARGED_POWER, MAX_BATTERY_DISCHARGED_POWER
+            )
+            * config_entry.data.get(CONF_BATTERY_COUNT, DEFAULT_BATTERY_COUNT),
+        }
+        _LOGGER.info(f"LIMITS: {self.limits}")
         super().__init__(
             hass,
             _LOGGER,
             name=DOMAIN,
-            update_interval=timedelta(seconds=scan_interval),
+            update_interval=timedelta(seconds=self.scan_interval),
         )
-        self.host = host
-        self.port = port
+
         self.serial_number: str | None = None
-        self._battery_capacity = battery_capacity
-        self._pv_strings = pv_strings
         self._client: AsyncModbusTcpClient = AsyncModbusTcpClient(
             host=self.host, port=self.port, timeout=5, reconnect_delay=0, retries=0
         )
@@ -104,17 +145,15 @@ class EcoflowCoordinator(DataUpdateCoordinator):
         await self._client.connect()
 
         if not self._client.connected:
-            _LOGGER.error("Modbus TCP not connected to %s:%s", self.host, self.port)
+            _LOGGER.error(f"Modbus TCP not connected to {self.host}:{self.port}")
         else:
             self.serial_number = await self.async_get_serial_number()
             _LOGGER.info(
-                "Modbus TCP is connected to %s:%s (SN: %s)",
-                self.host,
-                self.port,
-                self.serial_number,
+                f"Modbus TCP is connected to {self.host}:{self.port} (SN: {self.serial_number})"
             )
 
     async def async_get_serial_number(self) -> str:
+        """Read serial number"""
         raw = await self.async_read_block(MOD_REGISTER_MAP["serial_number"], 8)
         sn = "".join(chr((r >> 8) & 0xFF) + chr(r & 0xFF) for r in raw)
         return sn.strip().replace("\x00", "")
@@ -123,7 +162,7 @@ class EcoflowCoordinator(DataUpdateCoordinator):
         """Client-Reconnect"""
         delays = [0, 5, 30, 120]
         _LOGGER.info(
-            "PowerOcean (SN: %s) is not connected. Start reconnect!", self.serial_number
+            f"PowerOcean (SN: {self.serial_number}) is not connected. Start reconnect!"
         )
 
         for i, delay in enumerate(delays):
@@ -134,7 +173,7 @@ class EcoflowCoordinator(DataUpdateCoordinator):
 
                 _LOGGER.info(f"Modbus TCP reconnect (Attempt {i + 1}/4)...")
                 if await self._client.connect() and self._client.connected:
-                    _LOGGER.info("Reconnect successful! (SN: %s)", self.serial_number)
+                    _LOGGER.info(f"Reconnect successful! (SN: {self.serial_number})")
                     await asyncio.sleep(SLEEP_TIME_AFTER_RECONNECT)
                     return True
                 self._client.close()
@@ -176,7 +215,7 @@ class EcoflowCoordinator(DataUpdateCoordinator):
                     )
                     data[register.key] = decode_value
 
-            if data["battery_count"] != DEFAULT_BATTERY_COUNT:
+            if data["battery_count"] != self.limits[CONF_BATTERY_COUNT]:
                 _LOGGER.info(
                     f"Readed battery count {data['battery_count']} is unequal -> Skip data! Wait 35s for reconnect!"
                 )
@@ -193,34 +232,18 @@ class EcoflowCoordinator(DataUpdateCoordinator):
             _LOGGER.error(f"Unexpected error during data fetch: {repr(err)}")
             return data
 
-            #     data["operation_mode"] = a[9] if len(a) > 9 else None
-            #     # FIX: PV-Leistung pro String mit eigener Spannung berechnen
-            #     # Solar power: sum of active strings only
-            #     data["solar_power"] = round(
-            #         sum(data[f"pv{i}_power"] for i in range(1, self._pv_strings + 1)), 1
-            #     )
-
-            #     # Grid power: if register 40521 gave None, derive from energy balance as fallback
-            #     if data.get("grid_power", None) is None:
-            #         house = data.get("house_power", 0)
-            #         solar = data.get("solar_power", 0)
-            #         bat = data.get("battery_power", 0)
-            #         if any(v != 0 for v in [house, solar, bat]):
-            #             data["grid_power"] = round(house - solar + bat, 1)
-            #             _LOGGER.info(
-            #                 f"grid_power derived from balance: {data['grid_power']} W"
-            #             )
-
     def _sanitize_energy_values(self, data: dict[str, Any]) -> dict[str, Any]:
         result: dict[str, Any] = dict(data)
         self._check_monotonic = True
 
         now = dt.now()
         if self._last_checked_time is None or self._last_checked_data is None:
-            _LOGGER.info(f"Last checked time or data is None. Return current data.")
+            _LOGGER.info(
+                f"Last checked time or last checked data is None. Return current data."
+            )
             return result
         elif (now - self._last_checked_time).total_seconds() < 1:
-            _LOGGER.debug(
+            _LOGGER.info(
                 f"dt is less then one secend. Return last data. Delta-t: {(now - self._last_checked_time).total_seconds()}"
             )
             return dict(self._last_checked_data)
@@ -253,17 +276,17 @@ class EcoflowCoordinator(DataUpdateCoordinator):
                     # Anstieg berechnen
                     energy_delta = current_energy - last_energy
                     calculated_power = energy_delta / dt_hours
-                    if calculated_power > energy_sensor.max_power:
+                    limit = self.limits.get(energy_sensor.max_power, DEFAULT_MAX_POWER)
+                    if calculated_power > limit:
                         # positiver Anstieg und Lesitung über Max-Leistung
-                        _LOGGER.warning(
-                            f"Skip raw energy of entity {energy_sensor.key}! (raw energy: {current_energy} last energy: {last_energy} dt: {dt_hours} power: {int(calculated_power)} limit: {energy_sensor.max_power} delta power: {round(energy_delta, 4)} last check: {self._last_checked_time.time()})"
+                        raise DataErrorException(
+                            f"DataError: Skip hole data. Reason: {energy_sensor.key}! (raw energy: {current_energy} last energy: {last_energy} dt: {dt_hours} power: {int(calculated_power)} limit: {limit} delta power: {round(energy_delta, 4)} last check: {self._last_checked_time.time()})"
                         )
-                        result[energy_sensor.key] = last_energy
                     else:
                         # negativer Anstieg oder unterhalb der Max-Leistung
                         if current_energy == 0 and last_energy > 0:
-                            _LOGGER.warning(
-                                f"Skip raw value 0 kWh of entity {energy_sensor.key}! (raw energy: {current_energy} last energy: {last_energy} dt: {dt_hours} power: {int(calculated_power)} limit: {energy_sensor.max_power} delta power: {round(energy_delta, 4)} last check: {self._last_checked_time.time()})"
+                            raise DataErrorException(
+                                f"DataError: Skip hole data. Reason: {energy_sensor.key}! (raw energy: {current_energy} last energy: {last_energy} dt: {dt_hours} power: {int(calculated_power)} limit: {limit} delta power: {round(energy_delta, 4)} last check: {self._last_checked_time.time()})"
                             )
                         # Rückgabe des aktuellen Wertes nur wenn der neue Wert > letzter Wert ist
                         result[energy_sensor.key] = (
@@ -281,22 +304,25 @@ class EcoflowCoordinator(DataUpdateCoordinator):
     def _get_calculated_values(self, data: dict[str, Any]) -> dict[str, Any]:
         calc_data: dict[str, Any] = {}
 
-        calc_data["battery_capacity"] = self._battery_capacity  # user-configured kWh
-
         battery_soc = data.get("battery_soc", None)
+        battery_count = data.get("battery_count", None)
         calc_data["bat_remaining"] = (
-            round(self._battery_capacity * battery_soc / 100, 2)
-            if battery_soc is not None
+            round(battery_count * 5 * battery_soc / 100, 2)
+            if battery_soc is not None and battery_count is not None
             else None
         )
-        battery_count = data.get("battery_count", None)
         calc_data["limit_discharge"] = (
-            round(battery_count * LIMIT_DISCHARGE)
+            round(battery_count * MAX_BATTERY_DISCHARGED_POWER)
             if battery_count is not None
             else None
         )
         calc_data["limit_charge"] = (
-            round(battery_count * LIMIT_CHARGE) if battery_count is not None else None
+            round(battery_count * MAX_BATTERY_CHARGED_POWER)
+            if battery_count is not None
+            else None
+        )
+        calc_data["battery_capacity"] = (
+            battery_count * 5 if battery_count is not None else None
         )
         bat_charged_total = data.get("bat_charged_total", None)
         bat_discharged_total = data.get("bat_discharged_total", None)
@@ -385,7 +411,6 @@ class EcoflowCoordinator(DataUpdateCoordinator):
         return calc_data
 
     def _enforced_monotonic(self, data: dict[str, Any]) -> dict[str, Any]:
-
         for energy_senser in ENERGY_SENSOR_MAP:
             last = self._last_checked_data.get(energy_senser.key, None)
             current = data.get(energy_senser.key, None)
@@ -415,3 +440,9 @@ class EcoflowCoordinator(DataUpdateCoordinator):
                 "Reconnect attempts failed! Integration stopped. Retry after 120s.",
                 retry_after=120,
             )
+        except DataErrorException as err:
+            _LOGGER.warning(err.string)
+            return self._last_checked_data
+        except Exception as err:
+            _LOGGER.error(f"Unexpected error during data fetch: {repr(err)}")
+            return None

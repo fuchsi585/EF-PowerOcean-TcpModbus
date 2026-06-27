@@ -98,7 +98,6 @@ SENSORS: list[EcoflowSensorDescription] = [
         device_class=SensorDeviceClass.POWER,
         state_class=SensorStateClass.MEASUREMENT,
     ),
-    # ── Energy – Lifetime ─────────────────────────────────────────────────────
     EcoflowSensorDescription(
         key="bat_net_energy",
         name="Battery Net Energy",

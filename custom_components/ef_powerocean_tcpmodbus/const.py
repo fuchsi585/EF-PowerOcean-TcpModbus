@@ -10,22 +10,24 @@ DOMAIN = "ef_powerocean_tcpmodbus"
 DEFAULT_PORT = 502
 DEFAULT_SLAVE = 1
 DEFAULT_SCAN_INTERVAL = 10  # seconds
-DEFAULT_BATTERY_CAPACITY = 5.0  # kWh – workaround, register 40528 unreliable
+DEFAULT_BATTERY_COUNT = 0
+DEFAULT_MAX_SOLAR_POWER = 11400
+DEFAULT_MAX_GRID_POWER = 15000
+DEFAULT_MAX_POWER = 30000
 
-CONF_BATTERY_CAPACITY = "battery_capacity"
+CONF_HOST = "host"
+CONF_PORT = "port"
+CONF_BATTERY_COUNT = "battery_count"
+CONF_MAX_SOLAR_POWER = "solar_power_max"
+CONF_MAX_GRID_POWER = "grid_power_max"
+CONF_MAX_BATTERY_CHARGED_POWER = "battery_charged_power_max"
+CONF_MAX_BATTERY_DISCHARGED_POWER = "battery_discharged_power_max"
 CONF_SCAN_INTERVAL = "scan_interval"
-CONF_PV_STRINGS = "pv_strings"
 
-DEFAULT_PV_STRINGS = 2
 # A – below this value string current is treated as 0 (phantom voltage)
 PV_CURRENT_THRESHOLD = 0.06
-
-# Used in config_flow connection test only
-REG_STATUS = 42081  # UINT16 – 1 = Online
-
-
-# TODO
-# DEFAULT_BATTERY_COUNT muss über config vom User vorgeben werden
+MAX_BATTERY_CHARGED_POWER = 2500
+MAX_BATTERY_DISCHARGED_POWER = 3300
 
 
 @dataclass(frozen=True)
@@ -62,10 +64,6 @@ class EnergySensorDef:
     is_calculated: bool = False
     max_power: int | None = None
 
-
-DEFAULT_BATTERY_COUNT = 2
-LIMIT_CHARGE = 2500  # 2.5 kW per module
-LIMIT_DISCHARGE = 3300  # 3.3 kW per module
 
 MOD_REGISTER_MAP = {
     "serial_number": 40004,
@@ -130,11 +128,6 @@ MOD_REGISTER_MAP = {
         ),
     ],
 }
-
-MAX_SOLAR_POWER = 11400  # Vorgabe über conf
-MAX_GRID_POWER = 30000  # Vorgabe über conf
-MAX_BATTERY_CHARGED_POWER = 2500
-MAX_BATTERY_DISCHARGED_POWER = 3300
 
 
 def set_to_zero_below_threshold(value, threshold):
@@ -399,67 +392,63 @@ ENERGY_SENSOR_MAP: list[EnergySensorDef] = [
     EnergySensorDef(
         "grid_import_total",
         "Grid Import Total",
-        max_power=MAX_GRID_POWER,
+        max_power=CONF_MAX_GRID_POWER,
     ),
     EnergySensorDef(
         "grid_import_today",
         "Grid Import Today",
         reset_at_midnight=True,
-        max_power=MAX_GRID_POWER,
+        max_power=CONF_MAX_GRID_POWER,
     ),
-    EnergySensorDef("grid_export_total", "Grid Export Total", max_power=MAX_GRID_POWER),
+    EnergySensorDef(
+        "grid_export_total", "Grid Export Total", max_power=CONF_MAX_SOLAR_POWER
+    ),
     EnergySensorDef(
         "grid_export_today",
         "Grid Export Today",
         reset_at_midnight=True,
-        max_power=MAX_GRID_POWER,
+        max_power=CONF_MAX_SOLAR_POWER,
     ),
     EnergySensorDef(
         "bat_charged_total",
         "Battery Charged Total",
-        max_power=MAX_BATTERY_CHARGED_POWER * DEFAULT_BATTERY_COUNT,
+        max_power=CONF_MAX_BATTERY_CHARGED_POWER,  # MAX_BATTERY_CHARGED_POWER * DEFAULT_BATTERY_COUNT,
     ),
     EnergySensorDef(
         "bat_charged_today",
         "Battery Charged Today",
         reset_at_midnight=True,
-        max_power=MAX_BATTERY_CHARGED_POWER * DEFAULT_BATTERY_COUNT,
+        max_power=CONF_MAX_BATTERY_CHARGED_POWER,  # MAX_BATTERY_CHARGED_POWER * DEFAULT_BATTERY_COUNT,
     ),
     EnergySensorDef(
         "bat_discharged_total",
         "Battery Discharged Total",
-        max_power=MAX_BATTERY_DISCHARGED_POWER * DEFAULT_BATTERY_COUNT,
+        max_power=CONF_MAX_BATTERY_DISCHARGED_POWER,  # MAX_BATTERY_DISCHARGED_POWER * DEFAULT_BATTERY_COUNT,
     ),
     EnergySensorDef(
         "bat_discharged_today",
         "Battery Discharged Today",
         reset_at_midnight=True,
-        max_power=MAX_BATTERY_DISCHARGED_POWER * DEFAULT_BATTERY_COUNT,
+        max_power=CONF_MAX_BATTERY_DISCHARGED_POWER,  # MAX_BATTERY_DISCHARGED_POWER * DEFAULT_BATTERY_COUNT,
     ),
-    EnergySensorDef("solar_total", "Solar Yield Total", max_power=MAX_SOLAR_POWER),
+    EnergySensorDef("solar_total", "Solar Yield Total", max_power=CONF_MAX_SOLAR_POWER),
     EnergySensorDef(
         "solar_today",
         "Solar Yield Today",
         reset_at_midnight=True,
-        max_power=MAX_SOLAR_POWER,
+        max_power=CONF_MAX_SOLAR_POWER,
     ),
     EnergySensorDef(
         "house_energy_today",
         "House Consumption Today",
         reset_at_midnight=True,
         is_calculated=True,
-        max_power=MAX_GRID_POWER,
+        max_power=CONF_MAX_GRID_POWER,
     ),
     EnergySensorDef(
         "house_energy_total",
         "House Consumption Total",
         is_calculated=True,
-        max_power=MAX_GRID_POWER,
+        max_power=CONF_MAX_GRID_POWER,
     ),
-    # EnergySensorDef(
-    #     "bat_net_energy",
-    #     "Battery Net Energy",
-    #     reset_at_midnight=True,
-    #     max_power=MAX_GRID_POWER,
-    # ),
 ]
