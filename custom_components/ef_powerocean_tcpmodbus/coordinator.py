@@ -49,15 +49,6 @@ SLEEP_TIME_AFTER_RECONNECT = 1
 SLEEP_TIME_AFTER_HEARTBEAT_FAILED = 35
 
 
-class DataErrorException(Exception):
-    def __init__(self, string) -> None:
-        self.string = string
-        super().__init__(string)
-
-    def __str__(self) -> str:
-        return f"Ecoflow-Modbus Error: {self.string}"
-
-
 class EcoflowCoordinator(DataUpdateCoordinator):
     """Fetches data from EcoFlow PowerOcean Plus via Modbus TCP."""
 
@@ -238,12 +229,12 @@ class EcoflowCoordinator(DataUpdateCoordinator):
 
         now = dt.now()
         if self._last_checked_time is None or self._last_checked_data is None:
-            _LOGGER.info(
+            _LOGGER.debug(
                 f"Last checked time or last checked data is None. Return current data."
             )
             return result
         elif (now - self._last_checked_time).total_seconds() < 1:
-            _LOGGER.info(
+            _LOGGER.debug(
                 f"dt is less then one secend. Return last data. Delta-t: {(now - self._last_checked_time).total_seconds()}"
             )
             return dict(self._last_checked_data)
@@ -254,7 +245,7 @@ class EcoflowCoordinator(DataUpdateCoordinator):
             current_energy = result.get(energy_sensor.key, None)
             last_energy = self._last_checked_data.get(energy_sensor.key, None)
             if current_energy is None or last_energy is None:
-                _LOGGER.info(
+                _LOGGER.debug(
                     f"Current energy or last energy is None of entity {energy_sensor.key}"
                 )
                 continue
@@ -266,7 +257,7 @@ class EcoflowCoordinator(DataUpdateCoordinator):
                 and now.minute < 1
             ):
                 # Reset nur zwischen 00:00 und 00:01 erlauben
-                _LOGGER.info(f"Reset of entity {energy_sensor.key}")
+                _LOGGER.debug(f"Reset of entity {energy_sensor.key}")
                 result[energy_sensor.key] = 0
                 self._check_monotonic = False
             else:
@@ -279,15 +270,17 @@ class EcoflowCoordinator(DataUpdateCoordinator):
                     limit = self.limits.get(energy_sensor.max_power, DEFAULT_MAX_POWER)
                     if calculated_power > limit:
                         # positiver Anstieg und Lesitung über Max-Leistung
-                        raise DataErrorException(
-                            f"DataError: Skip hole data. Reason: {energy_sensor.key}! (raw energy: {current_energy} last energy: {last_energy} dt: {dt_hours} power: {int(calculated_power)} limit: {limit} delta power: {round(energy_delta, 4)} last check: {self._last_checked_time.time()})"
+                        _LOGGER.warning(
+                            f"DataError: Skip entire data. Reason: {energy_sensor.key}! (raw energy: {current_energy} last energy: {last_energy} dt: {dt_hours} power: {int(calculated_power)} limit: {limit} delta power: {round(energy_delta, 4)} last check: {self._last_checked_time.time()})"
                         )
+                        return self._last_checked_data
                     else:
                         # negativer Anstieg oder unterhalb der Max-Leistung
                         if current_energy == 0 and last_energy > 0:
-                            raise DataErrorException(
-                                f"DataError: Skip hole data. Reason: {energy_sensor.key}! (raw energy: {current_energy} last energy: {last_energy} dt: {dt_hours} power: {int(calculated_power)} limit: {limit} delta power: {round(energy_delta, 4)} last check: {self._last_checked_time.time()})"
+                            _LOGGER.warning(
+                                f"DataError: Skip entire data. Reason: 0 kWh of {energy_sensor.key}! (raw energy: {current_energy} last energy: {last_energy} dt: {dt_hours} power: {int(calculated_power)} limit: {limit} delta power: {round(energy_delta, 4)} last check: {self._last_checked_time.time()})"
                             )
+                            return self._last_checked_data
                         # Rückgabe des aktuellen Wertes nur wenn der neue Wert > letzter Wert ist
                         result[energy_sensor.key] = (
                             current_energy
@@ -440,9 +433,6 @@ class EcoflowCoordinator(DataUpdateCoordinator):
                 "Reconnect attempts failed! Integration stopped. Retry after 120s.",
                 retry_after=120,
             )
-        except DataErrorException as err:
-            _LOGGER.warning(err.string)
-            return self._last_checked_data
         except Exception as err:
             _LOGGER.error(f"Unexpected error during data fetch: {repr(err)}")
             return None
