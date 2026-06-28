@@ -129,6 +129,7 @@ class EcoflowCoordinator(DataUpdateCoordinator):
         """Integration-Shutdown, closing connection"""
         _LOGGER.info("PowerOcean Shutdown. Closing Connection!")
         self._client.close()
+        self._client = None
         await super().async_shutdown()
 
     async def async_connect_client(self) -> None:
@@ -208,15 +209,16 @@ class EcoflowCoordinator(DataUpdateCoordinator):
 
             if data["battery_count"] != self.limits[CONF_BATTERY_COUNT]:
                 _LOGGER.info(
-                    f"Readed battery count {data['battery_count']} is unequal -> Skip data! Wait 35s for reconnect!"
+                    f"Readed battery count {data['battery_count']} is unequal -> Skip data!"
+                    # f"Readed battery count {data['battery_count']} is unequal -> Skip data! Wait 35s for reconnect!"
                 )
-                self._client.close()
-                await asyncio.sleep(SLEEP_TIME_AFTER_HEARTBEAT_FAILED)
+                # self._client.close()
+                # await asyncio.sleep(SLEEP_TIME_AFTER_HEARTBEAT_FAILED)
                 return None
 
             return data
         except ModbusException as err:
-            _LOGGER.debug(f"Modbus-Error: {repr(err)}. Connection closing...")
+            _LOGGER.debug(f"{err.string}. Connection closing...")
             self._client.close()
             return None
         except Exception as err:
@@ -273,14 +275,14 @@ class EcoflowCoordinator(DataUpdateCoordinator):
                         _LOGGER.warning(
                             f"DataError: Skip entire data. Reason: {energy_sensor.key}! (raw energy: {current_energy} last energy: {last_energy} dt: {dt_hours} power: {int(calculated_power)} limit: {limit} delta power: {round(energy_delta, 4)} last check: {self._last_checked_time.time()})"
                         )
-                        return self._last_checked_data
+                        return dict(self._last_checked_data)
                     else:
                         # negativer Anstieg oder unterhalb der Max-Leistung
                         if current_energy == 0 and last_energy > 0:
                             _LOGGER.warning(
                                 f"DataError: Skip entire data. Reason: 0 kWh of {energy_sensor.key}! (raw energy: {current_energy} last energy: {last_energy} dt: {dt_hours} power: {int(calculated_power)} limit: {limit} delta power: {round(energy_delta, 4)} last check: {self._last_checked_time.time()})"
                             )
-                            return self._last_checked_data
+                            return dict(self._last_checked_data)
                         # Rückgabe des aktuellen Wertes nur wenn der neue Wert > letzter Wert ist
                         result[energy_sensor.key] = (
                             current_energy

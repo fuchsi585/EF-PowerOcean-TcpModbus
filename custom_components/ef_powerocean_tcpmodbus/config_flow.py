@@ -49,16 +49,16 @@ STEP_USER_DATA_SCHEMA = vol.Schema(
 )
 
 
-async def async_test_connection(host: str, port: int) -> bool:
+async def async_validate_connection(host: str, port: int) -> bool:
     """Try to connect and read status register."""
     try:
         client = AsyncModbusTcpClient(host, port=port, timeout=5)
         await client.connect()
         if not client.connected:
             return False
-
-        client.close()
-        return True
+        else:
+            client.close()
+            return True
     except Exception as e:
         _LOGGER.warning("EF-PowerOcean connection test failed: %s", e)
         return False
@@ -73,13 +73,18 @@ class EcoflowConfigFlow(ConfigFlow, domain=DOMAIN):
         """Initialize the config flow."""
         self._user_input: dict = {}
 
+    @staticmethod
+    @callback
+    def async_get_options_flow(config_entry):
+        return EcoflowOptionsFlow(config_entry)
+
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
         errors: dict[str, str] = {}
 
         if user_input is not None:
-            if await async_test_connection(
+            if await async_validate_connection(
                 user_input[CONF_HOST], user_input[CONF_PORT]
             ):
                 self._user_input = user_input
@@ -99,11 +104,6 @@ class EcoflowConfigFlow(ConfigFlow, domain=DOMAIN):
             data_schema=STEP_USER_DATA_SCHEMA,
             errors=errors,
         )
-
-    @staticmethod
-    @callback
-    def async_get_options_flow(config_entry):
-        return EcoflowOptionsFlow(config_entry)
 
 
 class EcoflowOptionsFlow(OptionsFlow):
@@ -126,7 +126,7 @@ class EcoflowOptionsFlow(OptionsFlow):
             current_host = self._config_entry.data.get(CONF_HOST)
             current_port = self._config_entry.data.get(CONF_PORT, DEFAULT_PORT)
             if host != current_host or port != current_port:
-                if not await async_test_connection(host, port):
+                if not await async_validate_connection(host, port):
                     errors["base"] = "cannot_connect"
 
             if not errors:
@@ -137,16 +137,18 @@ class EcoflowOptionsFlow(OptionsFlow):
                         **self._config_entry.data,
                         **user_input,
                     },
+                    unique_id=self._config_entry.unique_id,
                 )
                 return self.async_create_entry(title="", data={})
 
         schema = vol.Schema(
             {
                 vol.Required(
-                    "host", default=self._config_entry.data.get(CONF_HOST, "")
+                    CONF_HOST, default=self._config_entry.data.get(CONF_HOST, "")
                 ): str,
                 vol.Optional(
-                    "port", default=self._config_entry.data.get(CONF_PORT, DEFAULT_PORT)
+                    CONF_PORT,
+                    default=self._config_entry.data.get(CONF_PORT, DEFAULT_PORT),
                 ): int,
                 vol.Optional(
                     CONF_BATTERY_COUNT,
