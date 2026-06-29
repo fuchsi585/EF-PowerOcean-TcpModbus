@@ -3,22 +3,30 @@
     "step": {
       "user": {
         "title": "EcoFlow PowerOcean",
-        "description": "Verbindungsdaten des PowerOcean Plus eingeben.",
+        "description": "Verbindungsdaten",
         "data": {
           "host": "IP-Adresse",
-          "port": "Modbus TCP Port",
+          "port": "Modbus TCP Port"
+        },
+        "data_description": {
+          "host": "Lokale IP-Adresse des PowerOcean",
+          "port": "Standard ist 502"
+        }
+      },
+      "parameters":{
+        "title": "EcoFlow PowerOcean",
+        "description": "Einstellungen",
+        "data": {
           "battery_count": "Anzahl installierter Batterie-Module",
           "solar_power_max": "Maximale Solar-Leistung",
           "grid_power_max": "Maximale Netz-Leistung",
           "scan_interval": "Abfrageintervall (Sekunden)"
         },
         "data_description": {
-          "host": "Lokale IP-Adresse des PowerOcean Plus",
-          "port": "Standard ist 502",
           "battery_count": "Die Anzahl wird zur Berechnung der max. Lade- und Entladeleistung verwendet.",
           "solar_power_max": "Die max. Solar-Leistung wird für die Überprüfung der empfangenen Werte verwendet.",
           "grid_power_max": "Die max. Netz-Leistung wird für die Überprüfung der empfangenen Werte verwendet.",
-          "scan_interval": "Wie oft Werte abgefragt werden (2–60 Sekunden)"
+          "scan_interval": "Wie oft Werte abgefragt werden (2–30 Sekunden)"
         }
       }
     },
@@ -33,22 +41,30 @@
     "step": {
       "init": {
         "title": "EcoFlow PowerOcean – Einstellungen",
-        "description": "Verbindung und Abfrageeinstellungen anpassen.",
+        "description": "Verbindungsdaten",
         "data": {
           "host": "IP-Adresse",
-          "port": "Modbus TCP Port",
+          "port": "Modbus TCP Port"
+        },
+        "data_description": {
+          "host": "Lokale IP-Adresse des PowerOcean Plus",
+          "port": "Standard ist 502"
+        }
+      },
+      "parameters": {
+        "title": "EcoFlow PowerOcean – Einstellungen",
+        "description": "Einstellungen",
+        "data": {
           "battery_count": "Anzahl installierter Batterie-Module",
           "solar_power_max": "Maximale Solar-Leistung",
           "grid_power_max": "Maximale Netz-Leistung",
           "scan_interval": "Abfrageintervall (Sekunden)"
         },
         "data_description": {
-          "host": "Lokale IP-Adresse des PowerOcean Plus",
-          "port": "Standard ist 502",
           "battery_count": "Die Anzahl wird zur Berechnung der max. Lade- und Entladeleistung verwendet.",
           "solar_power_max": "Die max. Solar-Leistung wird für die Überprüfung der empfangenen Werte verwendet.",
           "grid_power_max": "Die max. Netz-Leistung wird für die Überprüfung der empfangenen Werte verwendet.",
-          "scan_interval": "Wie oft Werte abgefragt werden (2–60 Sekunden)"
+          "scan_interval": "Wie oft Werte abgefragt werden (2–30 Sekunden)"
         }
       }
     },

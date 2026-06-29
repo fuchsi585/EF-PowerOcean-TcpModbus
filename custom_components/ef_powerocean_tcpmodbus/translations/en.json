@@ -6,19 +6,27 @@
         "description": "Enter the connection details for your inverter.",
         "data": {
           "host": "IP Address",
-          "port": "Modbus TCP Port",
+          "port": "Modbus TCP Port"
+        },
+        "data_description": {
+          "host": "Local IP address of the inverter.",
+          "port": "Default is 502"
+        }
+      },
+      "parameters": {
+        "title": "EcoFlow PowerOcean",
+        "description": "Settings",
+        "data": {
           "battery_count": "Battery module count",
           "solar_power_max": "Maximum solar power",
           "grid_power_max": "Maximum grid power",
           "scan_interval": "Poll Interval (seconds)"
         },
         "data_description": {
-          "host": "Local IP address of the inverter.",
-          "port": "Default is 502",
           "battery_count": "Count of your battery modules.",
-          "solar_power_max": "Maximum solar power. Unused for",
+          "solar_power_max": "Maximum solar power",
           "grid_power_max": "Maximum grid power",
-          "scan_interval": "How often values are polled (2–60 seconds)"
+          "scan_interval": "How often values are polled (2-30 seconds)"
         }
       }
     },
@@ -33,22 +41,30 @@
     "step": {
       "init": {
         "title": "EcoFlow PowerOcean – Settings",
-        "description": "Adjust settings.",
+        "description": "Adjust the connection details for your inverter.",
         "data": {
           "host": "IP Address",
-          "port": "Modbus TCP Port",
+          "port": "Modbus TCP Port"
+        },
+        "data_description": {
+          "host": "Local IP address of the inverter.",
+          "port": "Default is 502"
+        }
+      },
+      "parameters": {
+        "title": "EcoFlow PowerOcean – Settings",
+        "description": "Settings",
+        "data": {
           "battery_count": "Battery module count",
           "solar_power_max": "Maximum solar power",
           "grid_power_max": "Maximum grid power",
           "scan_interval": "Poll Interval (seconds)"
         },
         "data_description": {
-          "host": "Local IP address of the inverter.",
-          "port": "Default is 502",
           "battery_count": "Count of your battery modules.",
-          "solar_power_max": "Maximum solar power. Unused for",
+          "solar_power_max": "Maximum solar power",
           "grid_power_max": "Maximum grid power",
-          "scan_interval": "How often values are polled (2–60 seconds)"
+          "scan_interval": "How often values are polled (2–30 seconds)"
         }
       }
     },
