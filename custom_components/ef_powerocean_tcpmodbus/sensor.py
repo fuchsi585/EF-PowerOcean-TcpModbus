@@ -67,14 +67,6 @@ SENSORS: list[EcoflowSensorDescription] = [
         state_class=SensorStateClass.MEASUREMENT,
     ),
     EcoflowSensorDescription(
-        key="battery_capacity",
-        name="Battery Nominal Capacity",
-        native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
-        device_class=SensorDeviceClass.ENERGY_STORAGE,
-        state_class=SensorStateClass.MEASUREMENT,
-        entity_category=EntityCategory.DIAGNOSTIC,
-    ),
-    EcoflowSensorDescription(
         key="pv1_power",
         name="PV String 1 Power",
         native_unit_of_measurement=UnitOfPower.WATT,

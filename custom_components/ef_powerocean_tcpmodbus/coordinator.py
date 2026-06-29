@@ -323,9 +323,9 @@ class EcoflowCoordinator(DataUpdateCoordinator):
             if battery_count is not None
             else None
         )
-        calc_data["battery_capacity"] = (
-            battery_count * 5 if battery_count is not None else None
-        )
+        # calc_data["battery_capacity"] = (
+        #     battery_count * 5 if battery_count is not None else None
+        # )
         bat_charged_total = data.get("bat_charged_total", None)
         bat_discharged_total = data.get("bat_discharged_total", None)
         calc_data["bat_net_energy"] = (

@@ -76,12 +76,13 @@ MOD_REGISTER_MAP = {
                 RegisterDef(key="solar_power", block_index=4),
                 RegisterDef(key="battery_power", block_index=6),
                 RegisterDef(key="battery_soc", block_index=8, size=1),
-                # RegisterDef(key="inverter_ac_power", block_index=11),
+                # RegisterDef(key="inverter_ac_power", block_index=11, size=1), # ändert sich wenn der Betriebsmodus gewechselt wird
                 RegisterDef(key="min_soc_limit", block_index=17, size=1),
                 RegisterDef(key="bat_temp_warn_max", block_index=21, size=1),
-                RegisterDef(key="bat_temp_warn_min", block_index=22, size=1),
+                RegisterDef(key="device_led_brightness", block_index=22, size=1),
                 RegisterDef(key="limit_inv_power", block_index=27, size=1),
                 RegisterDef(key="limit_inv_max", block_index=29, size=1),
+                RegisterDef(key="battery_capacity", block_index=33, size=1),
                 RegisterDef(key="battery_voltage", block_index=55),
                 RegisterDef(key="battery_current", block_index=57),
                 RegisterDef(key="battery_temperature", block_index=59),
@@ -135,6 +136,13 @@ def set_to_zero_below_threshold(value, threshold):
 
 
 SENSOR_MAP: list[SensorDef] = [
+    # SensorDef(
+    #     key="inverter_ac_power",
+    #     name="inverter_ac_power",
+    #     unit=None,
+    #     device_class=None,
+    #     state_class="measurement",
+    # ),
     SensorDef(
         key="house_power",
         name="House Power",
@@ -188,10 +196,10 @@ SENSOR_MAP: list[SensorDef] = [
         entity_category="diagnostic",
     ),
     SensorDef(
-        key="bat_temp_warn_min",
-        name="Battery Temp Warning Min",
-        unit="°C",
-        device_class="temperature",
+        key="device_led_brightness",
+        name="Device LED brightness",
+        unit="%",
+        device_class=None,
         state_class="measurement",
         entity_category="diagnostic",
     ),
@@ -208,6 +216,14 @@ SENSOR_MAP: list[SensorDef] = [
         name="Inverter Nominal Power Limit",
         unit="W",
         device_class="power",
+        state_class="measurement",
+        entity_category="diagnostic",
+    ),
+    SensorDef(
+        key="battery_capacity",
+        name="Battery Nominal Capacity",
+        unit="Wh",
+        device_class="energy",
         state_class="measurement",
         entity_category="diagnostic",
     ),
