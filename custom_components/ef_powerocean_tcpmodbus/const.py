@@ -9,7 +9,7 @@ from collections.abc import Callable
 DOMAIN = "ef_powerocean_tcpmodbus"
 DEFAULT_PORT = 502
 DEFAULT_SLAVE = 1
-DEFAULT_SCAN_INTERVAL = 10  # seconds
+DEFAULT_SCAN_INTERVAL = 5  # seconds
 DEFAULT_BATTERY_COUNT = 0
 DEFAULT_MAX_SOLAR_POWER = 11400
 DEFAULT_MAX_GRID_POWER = 15000

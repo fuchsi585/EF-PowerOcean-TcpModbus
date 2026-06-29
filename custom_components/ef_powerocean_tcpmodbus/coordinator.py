@@ -46,7 +46,7 @@ from .const import (
 _LOGGER = logging.getLogger(__name__)
 
 SLEEP_TIME_AFTER_RECONNECT = 1
-SLEEP_TIME_AFTER_HEARTBEAT_FAILED = 35
+SLEEP_TIME_AFTER_BATTERY_CHECK_FAILED = 35
 
 
 class EcoflowCoordinator(DataUpdateCoordinator):
@@ -81,7 +81,6 @@ class EcoflowCoordinator(DataUpdateCoordinator):
             )
             * config_entry.data.get(CONF_BATTERY_COUNT, DEFAULT_BATTERY_COUNT),
         }
-        _LOGGER.info(f"LIMITS: {self.limits}")
         super().__init__(
             hass,
             _LOGGER,
@@ -129,7 +128,6 @@ class EcoflowCoordinator(DataUpdateCoordinator):
         """Integration-Shutdown, closing connection"""
         _LOGGER.info("PowerOcean Shutdown. Closing Connection!")
         self._client.close()
-        self._client = None
         await super().async_shutdown()
 
     async def async_connect_client(self) -> None:
@@ -146,31 +144,41 @@ class EcoflowCoordinator(DataUpdateCoordinator):
 
     async def async_get_serial_number(self) -> str:
         """Read serial number"""
-        raw = await self.async_read_block(MOD_REGISTER_MAP["serial_number"], 8)
+        try:
+            raw = await self.async_read_block(MOD_REGISTER_MAP["serial_number"], 8)
+        except ModbusException as err:
+            _LOGGER.error(f"Can not read serial number. {err.string}.")
+            self._client.close()
+            return "unknown"
+
         sn = "".join(chr((r >> 8) & 0xFF) + chr(r & 0xFF) for r in raw)
         return sn.strip().replace("\x00", "")
 
     async def async_reconnect(self) -> bool:
         """Client-Reconnect"""
         delays = [0, 5, 30, 120]
-        _LOGGER.info(
+        _LOGGER.debug(
             f"PowerOcean (SN: {self.serial_number}) is not connected. Start reconnect!"
         )
 
         for i, delay in enumerate(delays):
             async with self._lock:
                 if delay > 0:
-                    _LOGGER.info(f"Reconnect failed! Wait {delay}s until next attempt.")
+                    _LOGGER.debug(
+                        f"Reconnect failed! Wait {delay}s until next attempt."
+                    )
                     await asyncio.sleep(delay)
 
-                _LOGGER.info(f"Modbus TCP reconnect (Attempt {i + 1}/4)...")
+                _LOGGER.debug(f"Modbus TCP reconnect (Attempt {i + 1}/4)...")
                 if await self._client.connect() and self._client.connected:
-                    _LOGGER.info(f"Reconnect successful! (SN: {self.serial_number})")
+                    _LOGGER.debug(
+                        f"Reconnect successful! (SN: {self.serial_number}) Atempts: {i + 1}/4"
+                    )
                     await asyncio.sleep(SLEEP_TIME_AFTER_RECONNECT)
                     return True
                 self._client.close()
 
-        _LOGGER.info(
+        _LOGGER.error(
             "EF-Modbus-TCP: All reconnect attempts failed! – will retry next poll"
         )
         return False
@@ -209,11 +217,10 @@ class EcoflowCoordinator(DataUpdateCoordinator):
 
             if data["battery_count"] != self.limits[CONF_BATTERY_COUNT]:
                 _LOGGER.info(
-                    f"Readed battery count {data['battery_count']} is unequal -> Skip data!"
-                    # f"Readed battery count {data['battery_count']} is unequal -> Skip data! Wait 35s for reconnect!"
+                    f"Readed battery count {data['battery_count']} is unequal -> Skip data! Wait {SLEEP_TIME_AFTER_BATTERY_CHECK_FAILED}s for reconnect!"
                 )
                 # self._client.close()
-                # await asyncio.sleep(SLEEP_TIME_AFTER_HEARTBEAT_FAILED)
+                await asyncio.sleep(SLEEP_TIME_AFTER_BATTERY_CHECK_FAILED)
                 return None
 
             return data
@@ -271,16 +278,16 @@ class EcoflowCoordinator(DataUpdateCoordinator):
                     calculated_power = energy_delta / dt_hours
                     limit = self.limits.get(energy_sensor.max_power, DEFAULT_MAX_POWER)
                     if calculated_power > limit:
-                        # positiver Anstieg und Lesitung über Max-Leistung
+                        # positiver Anstieg und Leistung über Max-Leistung
                         _LOGGER.warning(
-                            f"DataError: Skip entire data. Reason: {energy_sensor.key}! (raw energy: {current_energy} last energy: {last_energy} dt: {dt_hours} power: {int(calculated_power)} limit: {limit} delta power: {round(energy_delta, 4)} last check: {self._last_checked_time.time()})"
+                            f"Skip entire data. Reason: {energy_sensor.key}! (raw energy: {current_energy} last energy: {last_energy} dt: {dt_hours} power: {int(calculated_power)} limit: {limit} delta power: {round(energy_delta, 2)} last check: {self._last_checked_time.time()})"
                         )
                         return dict(self._last_checked_data)
                     else:
                         # negativer Anstieg oder unterhalb der Max-Leistung
                         if current_energy == 0 and last_energy > 0:
                             _LOGGER.warning(
-                                f"DataError: Skip entire data. Reason: 0 kWh of {energy_sensor.key}! (raw energy: {current_energy} last energy: {last_energy} dt: {dt_hours} power: {int(calculated_power)} limit: {limit} delta power: {round(energy_delta, 4)} last check: {self._last_checked_time.time()})"
+                                f"Skip entire data. Reason: 0 kWh of {energy_sensor.key}! (raw energy: {current_energy} last energy: {last_energy} dt: {dt_hours} power: {int(calculated_power)} limit: {limit} delta power: {round(energy_delta, 2)} last check: {self._last_checked_time.time()})"
                             )
                             return dict(self._last_checked_data)
                         # Rückgabe des aktuellen Wertes nur wenn der neue Wert > letzter Wert ist
@@ -290,7 +297,7 @@ class EcoflowCoordinator(DataUpdateCoordinator):
                             else last_energy
                         )
                 else:
-                    _LOGGER.info(
+                    _LOGGER.debug(
                         f"Time window is too large of entity {energy_sensor.key}! (raw energy: {current_energy} last energy: {last_energy} dt: {dt_hours} power: {int(calculated_power)} limit: {energy_sensor.max_power} delta power: {round(energy_delta, 4)} last check: {self._last_checked_time.time()})"
                     )
 

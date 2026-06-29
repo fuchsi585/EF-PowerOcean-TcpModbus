@@ -18,11 +18,9 @@ CONFIG_VERSION = 2
 
 async def async_migrate_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> bool:
     """Migrate old config entries to current schema."""
-    if config_entry.version > CONFIG_VERSION:
-        return False
 
     if config_entry.version < CONFIG_VERSION:
-        _LOGGER.debug(
+        _LOGGER.info(
             f"Migrating config entry {config_entry.entry_id} from version {CONFIG_VERSION} to {config_entry.version}."
         )
         new_data = {**config_entry.data}

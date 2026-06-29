@@ -29,25 +29,6 @@ from .const import (
 
 _LOGGER = logging.getLogger(__name__)
 
-STEP_USER_DATA_SCHEMA = vol.Schema(
-    {
-        vol.Required(CONF_HOST): str,
-        vol.Optional(CONF_PORT, default=DEFAULT_PORT): int,
-        vol.Optional(CONF_BATTERY_COUNT, default=DEFAULT_BATTERY_COUNT): vol.All(
-            int, vol.Range(min=0, max=6)
-        ),
-        vol.Optional(CONF_MAX_SOLAR_POWER, default=DEFAULT_MAX_SOLAR_POWER): vol.All(
-            int, vol.Range(min=1000, max=60000)
-        ),
-        vol.Optional(CONF_MAX_GRID_POWER, default=DEFAULT_MAX_GRID_POWER): vol.All(
-            int, vol.Range(min=1000, max=60000)
-        ),
-        vol.Optional(CONF_SCAN_INTERVAL, default=DEFAULT_SCAN_INTERVAL): vol.All(
-            int, vol.Range(min=2, max=60)
-        ),
-    }
-)
-
 
 async def async_validate_connection(host: str, port: int) -> bool:
     """Try to connect and read status register."""
@@ -92,16 +73,49 @@ class EcoflowConfigFlow(ConfigFlow, domain=DOMAIN):
                     f"{self._user_input[CONF_HOST]}:{self._user_input[CONF_PORT]}"
                 )
                 self._abort_if_unique_id_configured()
-                return self.async_create_entry(
-                    title=f"EcoFlow PowerOcean ({self._user_input[CONF_HOST]})",
-                    data=user_input,
-                )
+                return await self.async_step_parameters()
             else:
                 errors["base"] = "cannot_connect"
 
         return self.async_show_form(
             step_id="user",
-            data_schema=STEP_USER_DATA_SCHEMA,
+            data_schema=vol.Schema(
+                {
+                    vol.Required(CONF_HOST): str,
+                    vol.Optional(CONF_PORT, default=DEFAULT_PORT): int,
+                }
+            ),
+            errors=errors,
+        )
+
+    async def async_step_parameters(self, user_input=None) -> FlowResult:
+        errors: dict[str, str] = {}
+
+        if user_input is not None:
+            self._user_input.update(user_input)
+            return self.async_create_entry(
+                title=f"EcoFlow PowerOcean ({self._user_input[CONF_HOST]})",
+                data=self._user_input,
+            )
+
+        return self.async_show_form(
+            step_id="parameters",
+            data_schema=vol.Schema(
+                {
+                    vol.Optional(
+                        CONF_BATTERY_COUNT, default=DEFAULT_BATTERY_COUNT
+                    ): vol.All(int, vol.Range(min=0, max=6)),
+                    vol.Optional(
+                        CONF_MAX_SOLAR_POWER, default=DEFAULT_MAX_SOLAR_POWER
+                    ): vol.All(int, vol.Range(min=1000, max=60000)),
+                    vol.Optional(
+                        CONF_MAX_GRID_POWER, default=DEFAULT_MAX_GRID_POWER
+                    ): vol.All(int, vol.Range(min=1000, max=60000)),
+                    vol.Optional(
+                        CONF_SCAN_INTERVAL, default=DEFAULT_SCAN_INTERVAL
+                    ): vol.All(int, vol.Range(min=2, max=30)),
+                }
+            ),
             errors=errors,
         )
 
@@ -111,6 +125,7 @@ class EcoflowOptionsFlow(OptionsFlow):
 
     def __init__(self, config_entry: ConfigEntry) -> None:
         self._config_entry = config_entry
+        self._user_input: dict = {}
 
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
@@ -118,7 +133,6 @@ class EcoflowOptionsFlow(OptionsFlow):
         errors: dict[str, str] = {}
 
         if user_input is not None:
-            _LOGGER.info(user_input)
             host = user_input[CONF_HOST]
             port = user_input[CONF_PORT]
 
@@ -130,51 +144,68 @@ class EcoflowOptionsFlow(OptionsFlow):
                     errors["base"] = "cannot_connect"
 
             if not errors:
-                # Update entry data for host/port, store rest in options
-                self.hass.config_entries.async_update_entry(
-                    self._config_entry,
-                    data={
-                        **self._config_entry.data,
-                        **user_input,
-                    },
-                    unique_id=self._config_entry.unique_id,
-                )
-                return self.async_create_entry(title="", data={})
+                self._user_input = user_input
+                return await self.async_step_parameters()
 
-        schema = vol.Schema(
-            {
-                vol.Required(
-                    CONF_HOST, default=self._config_entry.data.get(CONF_HOST, "")
-                ): str,
-                vol.Optional(
-                    CONF_PORT,
-                    default=self._config_entry.data.get(CONF_PORT, DEFAULT_PORT),
-                ): int,
-                vol.Optional(
-                    CONF_BATTERY_COUNT,
-                    default=self._config_entry.data.get(
-                        CONF_BATTERY_COUNT, DEFAULT_BATTERY_COUNT
-                    ),
-                ): vol.All(int, vol.Range(min=0, max=6)),
-                vol.Optional(
-                    CONF_MAX_SOLAR_POWER,
-                    default=self._config_entry.data.get(
-                        CONF_MAX_SOLAR_POWER, DEFAULT_MAX_SOLAR_POWER
-                    ),
-                ): vol.All(int, vol.Range(min=1000, max=60000)),
-                vol.Optional(
-                    CONF_MAX_GRID_POWER,
-                    default=self._config_entry.data.get(
-                        CONF_MAX_GRID_POWER, DEFAULT_MAX_GRID_POWER
-                    ),
-                ): vol.All(int, vol.Range(min=1000, max=60000)),
-                vol.Optional(
-                    CONF_SCAN_INTERVAL,
-                    default=self._config_entry.data.get(
-                        CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL
-                    ),
-                ): vol.All(int, vol.Range(min=2, max=60)),
-            }
+        return self.async_show_form(
+            step_id="init",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(
+                        CONF_HOST, default=self._config_entry.data.get(CONF_HOST, "")
+                    ): str,
+                    vol.Optional(
+                        CONF_PORT,
+                        default=self._config_entry.data.get(CONF_PORT, DEFAULT_PORT),
+                    ): int,
+                }
+            ),
+            errors=errors,
         )
 
-        return self.async_show_form(step_id="init", data_schema=schema, errors=errors)
+    async def async_step_parameters(self, user_input=None) -> FlowResult:
+        errors: dict[str, str] = {}
+
+        if user_input is not None:
+            self._user_input.update(user_input)
+            self.hass.config_entries.async_update_entry(
+                self._config_entry,
+                data={
+                    **self._config_entry.data,
+                    **self._user_input,
+                },
+            )
+            return self.async_create_entry(title="", data={})
+
+        return self.async_show_form(
+            step_id="parameters",
+            data_schema=vol.Schema(
+                {
+                    vol.Optional(
+                        CONF_BATTERY_COUNT,
+                        default=self._config_entry.data.get(
+                            CONF_BATTERY_COUNT, DEFAULT_BATTERY_COUNT
+                        ),
+                    ): vol.All(int, vol.Range(min=0, max=6)),
+                    vol.Optional(
+                        CONF_MAX_SOLAR_POWER,
+                        default=self._config_entry.data.get(
+                            CONF_MAX_SOLAR_POWER, DEFAULT_MAX_SOLAR_POWER
+                        ),
+                    ): vol.All(int, vol.Range(min=1000, max=60000)),
+                    vol.Optional(
+                        CONF_MAX_GRID_POWER,
+                        default=self._config_entry.data.get(
+                            CONF_MAX_GRID_POWER, DEFAULT_MAX_GRID_POWER
+                        ),
+                    ): vol.All(int, vol.Range(min=1000, max=60000)),
+                    vol.Optional(
+                        CONF_SCAN_INTERVAL,
+                        default=self._config_entry.data.get(
+                            CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL
+                        ),
+                    ): vol.All(int, vol.Range(min=2, max=30)),
+                }
+            ),
+            errors=errors,
+        )
