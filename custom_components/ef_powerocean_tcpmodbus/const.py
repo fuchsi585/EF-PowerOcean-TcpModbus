@@ -47,7 +47,7 @@ class BlockDef:
 @dataclass(frozen=True)
 class SensorDef:
     key: str
-    name: str
+    name: str | None = None
     unit: str | None = None
     device_class: str | None = None
     state_class: str | None = None
@@ -59,10 +59,18 @@ class SensorDef:
 @dataclass(frozen=True)
 class EnergySensorDef:
     key: str
-    name: str
+    name: str | None = None
     reset_at_midnight: bool = False
     is_calculated: bool = False
     max_power: int | None = None
+
+
+@dataclass(frozen=True)
+class BinarySensorDef:
+    key: str
+    name: str | None = None
+    device_class: str | None = None
+    entity_category: str | None = None
 
 
 MOD_REGISTER_MAP = {
@@ -76,7 +84,9 @@ MOD_REGISTER_MAP = {
                 RegisterDef(key="solar_power", block_index=4),
                 RegisterDef(key="battery_power", block_index=6),
                 RegisterDef(key="battery_soc", block_index=8, size=1),
-                # RegisterDef(key="inverter_ac_power", block_index=11, size=1), # ändert sich wenn der Betriebsmodus gewechselt wird
+                RegisterDef(
+                    key="system_modes", block_index=11, size=1
+                ),  # Bit 3: Batteriesparmodus, Bit 4: Eigen-Modus, Bit 5: KI
                 RegisterDef(key="min_soc_limit", block_index=17, size=1),
                 RegisterDef(key="bat_temp_warn_max", block_index=21, size=1),
                 RegisterDef(key="device_led_brightness", block_index=22, size=1),
@@ -136,30 +146,26 @@ def set_to_zero_below_threshold(value, threshold):
 
 
 SENSOR_MAP: list[SensorDef] = [
-    # SensorDef(
-    #     key="inverter_ac_power",
-    #     name="inverter_ac_power",
-    #     unit=None,
-    #     device_class=None,
-    #     state_class="measurement",
-    # ),
+    SensorDef(
+        key="system_modes",
+        unit=None,
+        device_class="enum",
+        state_class="measurement",
+    ),
     SensorDef(
         key="house_power",
-        name="House Power",
         unit="W",
         device_class="power",
         state_class="measurement",
     ),
     SensorDef(
         key="grid_power",
-        name="Grid Power",
         unit="W",
         device_class="power",
         state_class="measurement",
     ),
     SensorDef(
         key="solar_power",
-        name="Solar Power",
         unit="W",
         device_class="power",
         state_class="measurement",
@@ -168,28 +174,24 @@ SENSOR_MAP: list[SensorDef] = [
     ),
     SensorDef(
         key="battery_power",
-        name="Battery Power",
         unit="W",
         device_class="power",
         state_class="measurement",
     ),
     SensorDef(
         key="battery_soc",
-        name="Battery SOC",
         unit="%",
         device_class="battery",
         state_class="measurement",
     ),
     SensorDef(
         key="min_soc_limit",
-        name="Min SOC Limit",
         unit="%",
         device_class="battery",
         state_class="measurement",
     ),
     SensorDef(
         key="bat_temp_warn_max",
-        name="Battery Temp Warning Max",
         unit="°C",
         device_class="temperature",
         state_class="measurement",
@@ -197,7 +199,6 @@ SENSOR_MAP: list[SensorDef] = [
     ),
     SensorDef(
         key="device_led_brightness",
-        name="Device LED brightness",
         unit="%",
         device_class=None,
         state_class="measurement",
@@ -205,7 +206,6 @@ SENSOR_MAP: list[SensorDef] = [
     ),
     SensorDef(
         key="limit_inv_power",
-        name="Inverter Current Max Power",
         unit="W",
         device_class="power",
         state_class="measurement",
@@ -213,7 +213,6 @@ SENSOR_MAP: list[SensorDef] = [
     ),
     SensorDef(
         key="limit_inv_max",
-        name="Inverter Nominal Power Limit",
         unit="W",
         device_class="power",
         state_class="measurement",
@@ -221,7 +220,6 @@ SENSOR_MAP: list[SensorDef] = [
     ),
     SensorDef(
         key="battery_capacity",
-        name="Battery Nominal Capacity",
         unit="Wh",
         device_class="energy",
         state_class="measurement",
@@ -229,7 +227,6 @@ SENSOR_MAP: list[SensorDef] = [
     ),
     SensorDef(
         key="battery_voltage",
-        name="Battery Voltage",
         unit="V",
         device_class="voltage",
         state_class="measurement",
@@ -237,7 +234,6 @@ SENSOR_MAP: list[SensorDef] = [
     ),
     SensorDef(
         key="battery_current",
-        name="Battery Current",
         unit="A",
         device_class="current",
         state_class="measurement",
@@ -245,7 +241,6 @@ SENSOR_MAP: list[SensorDef] = [
     ),
     SensorDef(
         key="battery_temperature",
-        name="Battery Temperature",
         unit="°C",
         device_class="temperature",
         state_class="measurement",
@@ -253,7 +248,6 @@ SENSOR_MAP: list[SensorDef] = [
     ),
     SensorDef(
         key="voltage_l1",
-        name="Grid Voltage L1",
         unit="V",
         device_class="voltage",
         state_class="measurement",
@@ -261,7 +255,6 @@ SENSOR_MAP: list[SensorDef] = [
     ),
     SensorDef(
         key="voltage_l2",
-        name="Grid Voltage L2",
         unit="V",
         device_class="voltage",
         state_class="measurement",
@@ -269,7 +262,6 @@ SENSOR_MAP: list[SensorDef] = [
     ),
     SensorDef(
         key="voltage_l3",
-        name="Grid Voltage L3",
         unit="V",
         device_class="voltage",
         state_class="measurement",
@@ -277,7 +269,6 @@ SENSOR_MAP: list[SensorDef] = [
     ),
     SensorDef(
         key="current_l1",
-        name="Grid Current L1",
         unit="A",
         device_class="current",
         state_class="measurement",
@@ -285,7 +276,6 @@ SENSOR_MAP: list[SensorDef] = [
     ),
     SensorDef(
         key="current_l2",
-        name="Grid Current L2",
         unit="A",
         device_class="current",
         state_class="measurement",
@@ -293,7 +283,6 @@ SENSOR_MAP: list[SensorDef] = [
     ),
     SensorDef(
         key="current_l3",
-        name="Grid Current L3",
         unit="A",
         device_class="current",
         state_class="measurement",
@@ -301,7 +290,6 @@ SENSOR_MAP: list[SensorDef] = [
     ),
     SensorDef(
         key="inverter_temperature",
-        name="Inverter Temperature",
         unit="°C",
         device_class="temperature",
         state_class="measurement",
@@ -309,7 +297,6 @@ SENSOR_MAP: list[SensorDef] = [
     ),
     SensorDef(
         key="frequency",
-        name="Grid Frequency",
         unit="Hz",
         device_class="frequency",
         state_class="measurement",
@@ -317,7 +304,6 @@ SENSOR_MAP: list[SensorDef] = [
     ),
     SensorDef(
         key="pv1_voltage",
-        name="PV String 1 Voltage",
         unit="V",
         device_class="voltage",
         state_class="measurement",
@@ -325,7 +311,6 @@ SENSOR_MAP: list[SensorDef] = [
     ),
     SensorDef(
         key="pv2_voltage",
-        name="PV String 2 Voltage",
         unit="V",
         device_class="voltage",
         state_class="measurement",
@@ -333,7 +318,6 @@ SENSOR_MAP: list[SensorDef] = [
     ),
     SensorDef(
         key="pv3_voltage",
-        name="PV String 3 Voltage",
         unit="V",
         device_class="voltage",
         state_class="measurement",
@@ -341,7 +325,6 @@ SENSOR_MAP: list[SensorDef] = [
     ),
     SensorDef(
         key="pv1_current",
-        name="PV String 1 Current",
         unit="A",
         device_class="current",
         state_class="measurement",
@@ -351,7 +334,6 @@ SENSOR_MAP: list[SensorDef] = [
     ),
     SensorDef(
         key="pv2_current",
-        name="PV String 2 Current",
         unit="A",
         device_class="current",
         state_class="measurement",
@@ -361,7 +343,6 @@ SENSOR_MAP: list[SensorDef] = [
     ),
     SensorDef(
         key="pv3_current",
-        name="PV String 3 Current",
         unit="A",
         device_class="current",
         state_class="measurement",
@@ -371,7 +352,6 @@ SENSOR_MAP: list[SensorDef] = [
     ),
     SensorDef(
         key="battery_count",
-        name="Battery Module Count",
         unit=None,
         device_class=None,
         state_class="measurement",
@@ -379,7 +359,6 @@ SENSOR_MAP: list[SensorDef] = [
     ),
     SensorDef(
         key="soc_battery_1",
-        name="SOC Battery 1",
         unit="%",
         device_class="battery",
         state_class="measurement",
@@ -387,7 +366,6 @@ SENSOR_MAP: list[SensorDef] = [
     ),
     SensorDef(
         key="soc_battery_2",
-        name="SOC Battery 2",
         unit="%",
         device_class="battery",
         state_class="measurement",
@@ -395,7 +373,6 @@ SENSOR_MAP: list[SensorDef] = [
     ),
     SensorDef(
         key="soc_battery_3",
-        name="SOC Battery 3",
         unit="%",
         device_class="battery",
         state_class="measurement",
@@ -405,66 +382,48 @@ SENSOR_MAP: list[SensorDef] = [
 
 
 ENERGY_SENSOR_MAP: list[EnergySensorDef] = [
+    EnergySensorDef("grid_import_total", max_power=CONF_MAX_GRID_POWER),
     EnergySensorDef(
-        "grid_import_total",
-        "Grid Import Total",
-        max_power=CONF_MAX_GRID_POWER,
+        "grid_import_today", reset_at_midnight=True, max_power=CONF_MAX_GRID_POWER
     ),
+    EnergySensorDef("grid_export_total", max_power=CONF_MAX_SOLAR_POWER),
     EnergySensorDef(
-        "grid_import_today",
-        "Grid Import Today",
-        reset_at_midnight=True,
-        max_power=CONF_MAX_GRID_POWER,
+        "grid_export_today", reset_at_midnight=True, max_power=CONF_MAX_SOLAR_POWER
     ),
-    EnergySensorDef(
-        "grid_export_total", "Grid Export Total", max_power=CONF_MAX_SOLAR_POWER
-    ),
-    EnergySensorDef(
-        "grid_export_today",
-        "Grid Export Today",
-        reset_at_midnight=True,
-        max_power=CONF_MAX_SOLAR_POWER,
-    ),
-    EnergySensorDef(
-        "bat_charged_total",
-        "Battery Charged Total",
-        max_power=CONF_MAX_BATTERY_CHARGED_POWER,  # MAX_BATTERY_CHARGED_POWER * DEFAULT_BATTERY_COUNT,
-    ),
+    EnergySensorDef("bat_charged_total", max_power=CONF_MAX_BATTERY_CHARGED_POWER),
     EnergySensorDef(
         "bat_charged_today",
-        "Battery Charged Today",
         reset_at_midnight=True,
-        max_power=CONF_MAX_BATTERY_CHARGED_POWER,  # MAX_BATTERY_CHARGED_POWER * DEFAULT_BATTERY_COUNT,
+        max_power=CONF_MAX_BATTERY_CHARGED_POWER,
     ),
     EnergySensorDef(
-        "bat_discharged_total",
-        "Battery Discharged Total",
-        max_power=CONF_MAX_BATTERY_DISCHARGED_POWER,  # MAX_BATTERY_DISCHARGED_POWER * DEFAULT_BATTERY_COUNT,
+        "bat_discharged_total", max_power=CONF_MAX_BATTERY_DISCHARGED_POWER
     ),
     EnergySensorDef(
         "bat_discharged_today",
-        "Battery Discharged Today",
         reset_at_midnight=True,
-        max_power=CONF_MAX_BATTERY_DISCHARGED_POWER,  # MAX_BATTERY_DISCHARGED_POWER * DEFAULT_BATTERY_COUNT,
+        max_power=CONF_MAX_BATTERY_DISCHARGED_POWER,
     ),
-    EnergySensorDef("solar_total", "Solar Yield Total", max_power=CONF_MAX_SOLAR_POWER),
+    EnergySensorDef("solar_total", max_power=CONF_MAX_SOLAR_POWER),
     EnergySensorDef(
-        "solar_today",
-        "Solar Yield Today",
-        reset_at_midnight=True,
-        max_power=CONF_MAX_SOLAR_POWER,
+        "solar_today", reset_at_midnight=True, max_power=CONF_MAX_SOLAR_POWER
     ),
     EnergySensorDef(
         "house_energy_today",
-        "House Consumption Today",
         reset_at_midnight=True,
         is_calculated=True,
         max_power=CONF_MAX_GRID_POWER,
     ),
     EnergySensorDef(
         "house_energy_total",
-        "House Consumption Total",
         is_calculated=True,
         max_power=CONF_MAX_GRID_POWER,
     ),
+]
+
+
+BINARY_SENSOR_MAP: list[BinarySensorDef] = [
+    BinarySensorDef("self_use_mode_ena", "battery"),
+    BinarySensorDef("intelligent_mode_ena", "battery"),
+    BinarySensorDef("battery_saver_mode_ena", "battery"),
 ]

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 
+from homeassistant.const import Platform
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 
@@ -12,7 +13,10 @@ from .coordinator import EcoflowCoordinator
 
 _LOGGER = logging.getLogger(__name__)
 
-PLATFORMS = ["sensor"]
+PLATFORMS = [
+    Platform.BINARY_SENSOR,
+    Platform.SENSOR,
+]
 CONFIG_VERSION = 2
 
 

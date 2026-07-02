@@ -61,35 +61,30 @@ VALUE_PRECISION = {
 SENSORS: list[EcoflowSensorDescription] = [
     EcoflowSensorDescription(
         key="bat_remaining",
-        name="Battery Remaining Energy",
         native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
         device_class=SensorDeviceClass.ENERGY_STORAGE,
         state_class=SensorStateClass.MEASUREMENT,
     ),
     EcoflowSensorDescription(
         key="pv1_power",
-        name="PV String 1 Power",
         native_unit_of_measurement=UnitOfPower.WATT,
         device_class=SensorDeviceClass.POWER,
         state_class=SensorStateClass.MEASUREMENT,
     ),
     EcoflowSensorDescription(
         key="pv2_power",
-        name="PV String 2 Power",
         native_unit_of_measurement=UnitOfPower.WATT,
         device_class=SensorDeviceClass.POWER,
         state_class=SensorStateClass.MEASUREMENT,
     ),
     EcoflowSensorDescription(
         key="pv3_power",
-        name="PV String 3 Power",
         native_unit_of_measurement=UnitOfPower.WATT,
         device_class=SensorDeviceClass.POWER,
         state_class=SensorStateClass.MEASUREMENT,
     ),
     EcoflowSensorDescription(
         key="bat_net_energy",
-        name="Battery Net Energy",
         native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
         device_class=SensorDeviceClass.ENERGY,
         state_class=SensorStateClass.TOTAL,
@@ -143,6 +138,7 @@ class EcoflowSensor(CoordinatorEntity[EcoflowCoordinator], RestoreSensor):
         self.entity_description: EcoflowSensorDescription = description
         self.sensor_definition: SensorDef = sensor_definition
         self._attr_unique_id = f"{entry.entry_id}_{description.key}"
+        self._attr_translation_key = description.key
         self._attr_has_entity_name = True
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, entry.entry_id)},
@@ -202,5 +198,5 @@ class EcoflowSensor(CoordinatorEntity[EcoflowCoordinator], RestoreSensor):
                         else int(round(value, 0))
                     )
                 else:
-                    return value
+                    return int(value)
         return self._last_written_value

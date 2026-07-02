@@ -49,6 +49,10 @@ SLEEP_TIME_AFTER_RECONNECT = 1
 SLEEP_TIME_AFTER_BATTERY_CHECK_FAILED = 35
 
 
+def getBit(value: int, bitpos: int) -> bool:
+    return (value & (2**bitpos)) == 2**bitpos
+
+
 class EcoflowCoordinator(DataUpdateCoordinator):
     """Fetches data from EcoFlow PowerOcean Plus via Modbus TCP."""
 
@@ -98,6 +102,11 @@ class EcoflowCoordinator(DataUpdateCoordinator):
         self._last_checked_data: dict[str, Any] = {}
         self._last_checked_time: datetime = None
         self._check_monotonic: bool = True
+        self._count_reset_energy_sensor: int = 0
+        for sensor in ENERGY_SENSOR_MAP:
+            if sensor.reset_at_midnight:
+                self._count_reset_energy_sensor += 1
+        self._count_reset_energy_finished: int = self._count_reset_energy_sensor
 
     @staticmethod
     def _decode_register(
@@ -267,8 +276,12 @@ class EcoflowCoordinator(DataUpdateCoordinator):
             ):
                 # Reset nur zwischen 00:00 und 00:01 erlauben
                 _LOGGER.debug(f"Reset of entity {energy_sensor.key}")
+                if self._count_reset_energy_finished == self._count_reset_energy_sensor:
+                    # first counter reset after midnight
+                    self._count_reset_energy_finished = 0
                 result[energy_sensor.key] = 0
                 self._check_monotonic = False
+                self._count_reset_energy_finished += 1
             else:
                 dt_hours = (now - self._last_checked_time).total_seconds() / 3600
                 # Nur innerhalb einer 1h Stunde prüfen, danach ist das Gap zu groß
@@ -323,9 +336,6 @@ class EcoflowCoordinator(DataUpdateCoordinator):
             if battery_count is not None
             else None
         )
-        # calc_data["battery_capacity"] = (
-        #     battery_count * 5 if battery_count is not None else None
-        # )
         bat_charged_total = data.get("bat_charged_total", None)
         bat_discharged_total = data.get("bat_discharged_total", None)
         calc_data["bat_net_energy"] = (
@@ -335,27 +345,30 @@ class EcoflowCoordinator(DataUpdateCoordinator):
         )
 
         # house energy calculation
-        solar_today = data.get("solar_today", None)
-        grid_import_today = data.get("grid_import_today", None)
-        grid_export_today = data.get("grid_export_today", None)
-        bat_charged_today = data.get("bat_charged_today", None)
-        bat_discharged_today = data.get("bat_discharged_today", None)
-        calc_data["house_energy_today"] = (
-            round(
-                solar_today
-                + grid_import_today
-                + bat_discharged_today
-                - grid_export_today
-                - bat_charged_today,
-                2,
+        if self._count_reset_energy_finished == self._count_reset_energy_sensor:
+            # Berechnung erst wenn alle werte zurückgesetzt werden
+            solar_today = data.get("solar_today", None)
+            grid_import_today = data.get("grid_import_today", None)
+            grid_export_today = data.get("grid_export_today", None)
+            bat_charged_today = data.get("bat_charged_today", None)
+            bat_discharged_today = data.get("bat_discharged_today", None)
+            calc_data["house_energy_today"] = (
+                round(
+                    solar_today
+                    + grid_import_today
+                    + bat_discharged_today
+                    - grid_export_today
+                    - bat_charged_today,
+                    2,
+                )
+                if solar_today is not None
+                and grid_import_today is not None
+                and bat_discharged_today is not None
+                and grid_export_today is not None
+                and bat_charged_today is not None
+                else None
             )
-            if solar_today is not None
-            and grid_import_today is not None
-            and bat_discharged_today is not None
-            and grid_export_today is not None
-            and bat_charged_today is not None
-            else None
-        )
+
         solar_total = data.get("solar_total", None)
         grid_import_total = data.get("grid_import_total", None)
         grid_export_total = data.get("grid_export_total", None)
@@ -409,6 +422,13 @@ class EcoflowCoordinator(DataUpdateCoordinator):
                 else round(pv3_current * pv3_voltage, 1)
             )
         )
+
+        system_mode = data.get("system_modes", None)
+        if system_mode is not None:
+            # Bit 3: Batteriesparmodus, Bit 4: Eigenstromversorgung, Bit 5: Intelligenter Modus
+            calc_data["battery_saver_mode_ena"] = getBit(int(system_mode), 3)
+            calc_data["self_use_mode_ena"] = getBit(int(system_mode), 4)
+            calc_data["intelligent_mode_ena"] = getBit(int(system_mode), 5)
 
         return calc_data
 
