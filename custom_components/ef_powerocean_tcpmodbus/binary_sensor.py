@@ -67,7 +67,7 @@ class EcoFlowBinarySensor(CoordinatorEntity[EcoflowCoordinator], BinarySensorEnt
         if self.coordinator.data is not None:
             value = self.coordinator.data.get(self._definition.key)
 
-        if value is not None:
-            return bool(value)
+            if value is not None:
+                return bool(value)
 
         return self._last_written_value
