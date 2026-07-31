@@ -49,6 +49,19 @@ _LOGGER = logging.getLogger(__name__)
 SLEEP_TIME_AFTER_RECONNECT = 1
 SLEEP_TIME_AFTER_BATTERY_CHECK_FAILED = 15
 
+GRADIENT_KEYS = (
+    "grid_import_total",
+    "grid_import_today",
+    "grid_export_total",
+    "grid_export_today",
+    "bat_charged_total",
+    "bat_charged_today",
+    "bat_discharged_total",
+    "bat_discharged_today",
+    "solar_total",
+    "solar_today",
+)
+
 
 def getBit(value: int, bitpos: int) -> bool:
     return (value & (2**bitpos)) == 2**bitpos
@@ -108,6 +121,8 @@ class EcoflowCoordinator(DataUpdateCoordinator):
             if sensor.reset_at_midnight:
                 self._count_reset_energy_sensor += 1
         self._count_reset_energy_finished: int = self._count_reset_energy_sensor
+        self._last_valid_value: dict[str, Any] = {}
+        self._last_valid_time: dict[str, Any] = {}
 
     @staticmethod
     def _decode_register(
@@ -445,6 +460,29 @@ class EcoflowCoordinator(DataUpdateCoordinator):
 
         return calc_data
 
+    def _get_calculate_gradient(self, name, new_raw_value) -> float | None:
+        now = dt.now()
+        if new_raw_value is None:
+            return None
+
+        last_valid_value = self._last_valid_value.get(name, None)
+        last_valid_time = self._last_valid_time.get(name, None)
+        if last_valid_value is None or last_valid_time is None:
+            self._last_valid_value[name] = new_raw_value
+            self._last_valid_time[name] = now
+            return None
+
+        time_delta = (now - last_valid_time).total_seconds()
+        if time_delta <= 1:
+            return None
+
+        current_gradient = (new_raw_value - last_valid_value) / time_delta
+
+        self._last_valid_value[name] = new_raw_value
+        self._last_valid_time[name] = now
+
+        return current_gradient * 1000  # kWh/s -> Wh/s
+
     def _enforced_monotonic(self, data: dict[str, Any]) -> dict[str, Any]:
         for energy_senser in ENERGY_SENSOR_MAP:
             last = self._last_checked_data.get(energy_senser.key, None)
@@ -459,6 +497,14 @@ class EcoflowCoordinator(DataUpdateCoordinator):
             if (raw_data := await self.async_get_raw_data()) is None:
                 return None
 
+            gradient_dict = {}
+            for name in GRADIENT_KEYS:
+                gradient = self._get_calculate_gradient(name, raw_data.get(name, None))
+                gradient_dict[f"gradient_{name}"] = gradient
+
+            if raw_data["frequency"] == 0 or not raw_data.get("frequency", None):
+                _LOGGER.warning(f"frequency: {raw_data.get('frequency', 'no data')}")
+
             result = self._sanitize_energy_values(raw_data)
             calculated_results = self._get_calculated_values(result)
             result.update(calculated_results)
@@ -469,12 +515,14 @@ class EcoflowCoordinator(DataUpdateCoordinator):
             self._last_checked_data = dict(result)
             self._last_checked_time = dt.now()
 
+            result.update(gradient_dict)
+
             return dict(result)
         except UpdateFailed:  # noqa: BLE001
             raise UpdateFailed(
                 "Reconnect attempts failed! Integration stopped. Retry after 120s.",
                 retry_after=120,
             )
-        except Exception as err:
-            _LOGGER.error(f"Unexpected error during data fetch: {repr(err)}")
-            return None
+        # except Exception as err:
+        #     _LOGGER.error(f"Unexpected error during data fetch: {repr(err)}")
+        #     return None
