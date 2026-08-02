@@ -124,6 +124,10 @@ class EcoflowCoordinator(DataUpdateCoordinator):
         self._last_valid_value: dict[str, Any] = {}
         self._last_valid_time: dict[str, Any] = {}
 
+    @property
+    def connected(self) -> bool:
+        return self._client.connected
+
     @staticmethod
     def _decode_register(
         regs: list[int], register_index: int, register_size: int
